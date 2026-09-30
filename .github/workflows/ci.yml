@@ -1,7 +1,9 @@
 name: CI
 
+# Pull requests: checks only. main: checks + downloadable plugin build.
 on:
   push:
+    branches: [main]
   pull_request:
 
 jobs:
@@ -15,7 +17,14 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run check
+      - id: version
+        if: github.event_name == 'push'
+        run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+      # GitHub zips every artifact on download. Uploading the unpacked plugin
+      # folder makes that download the installable plugin ZIP itself.
       - uses: actions/upload-artifact@v4
+        if: github.event_name == 'push'
         with:
-          name: sp-butler-plugin
-          path: dist/*.zip
+          name: sp-butler-${{ steps.version.outputs.version }}
+          path: dist/sp-butler/
+          if-no-files-found: error
