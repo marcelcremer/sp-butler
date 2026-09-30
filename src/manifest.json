@@ -24,5 +24,6 @@
   ],
   "iFrame": true,
   "sidePanel": true,
+  "uiKit": false,
   "icon": "icon.svg"
 }

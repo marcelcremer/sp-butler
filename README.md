@@ -70,6 +70,7 @@ Designentscheidungen:
 - **Kalender im Prompt.** Die nächsten 14 Tage stehen mit Wochentag im Prompt („2026-10-02 Freitag“). LLMs rechnen Wochentage oft falsch.
 - **Semantische Suche baut stufenweise auf.** Ohne Modelle gibt es Stichwortsuche mit Präfix-Matching („Einkauf“ ≈ „einkaufen“). Mit Embedding-Modell kommt Cosinus-Ähnlichkeit hinzu (Vektoren pro Task gecacht), mit Rerank-Modell eine Neusortierung der Top 40. Fällt ein Endpoint aus, arbeitet die vorherige Stufe weiter.
 - **Verschieben mit Uhrzeit.** Tasks mit fester Uhrzeit (`dueWithTime`) behalten beim Verschieben ihre Uhrzeit.
+- **UI im Look von [shadcn/ui](https://ui.shadcn.com), ohne React.** Die Farb-Tokens (Dark Mode) stammen aus shadcns `globals.css`, die Komponenten (Button, Card, Badge, Checkbox, Input, Tabs, Message/Bubble, Empty) sind als schlankes CSS in `src/ui/styles.css` nachgebaut, die Icons sind Lucide-SVGs. Das UI-Kit von Super Productivity ist per `"uiKit": false` abgeschaltet, damit es die Styles nicht überschreibt.
 - **Robust gegen Modellfehler.** Tool-Argumente werden validiert. Fehler gehen als Tool-Ergebnis zurück ans Modell, bei Bulk-Änderungen einzeln pro Eintrag.
 
 ## Entwicklung

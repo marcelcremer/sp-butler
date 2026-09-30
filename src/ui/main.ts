@@ -1,9 +1,10 @@
-// Chat + settings UI running in the plugin iframe. All output goes through
-// textContent – model output is never interpreted as HTML.
+// Chat + settings UI running in the plugin iframe. All dynamic text goes
+// through textContent – model output is never interpreted as HTML.
 
-import type { ChatResponse, ProposalItemView, ProposalView, SettingsResponse } from '../shared/protocol.ts';
 import type { Settings } from '../plugin/settings.ts';
+import type { ChatResponse, ProposalItemView, ProposalView, SettingsResponse } from '../shared/protocol.ts';
 import { send } from './bridge.ts';
+import { icon, type IconName } from './icons.ts';
 
 const sessionId = `s${String(Date.now())}`;
 
@@ -16,166 +17,214 @@ const $ = <T extends HTMLElement = HTMLElement>(
   return el;
 };
 
+type Child = Node | string | null | undefined | false;
+
 const h = <K extends keyof HTMLElementTagNameMap>(
   tag: K,
-  props: { className?: string; text?: string } = {},
-  ...children: (Node | null)[]
+  className?: string,
+  ...children: Child[]
 ): HTMLElementTagNameMap[K] => {
   const el = document.createElement(tag);
-  if (props.className) el.className = props.className;
-  if (props.text !== undefined) el.textContent = props.text;
+  if (className) el.className = className;
   for (const c of children) if (c) el.append(c);
   return el;
 };
 
+const badge = (iconName: IconName | null, text: string, variant = 'badge-outline'): HTMLElement =>
+  h('span', `badge ${variant}`, iconName && icon(iconName), text);
+
+// Static icon placeholders in index.html: <span data-icon="name">. Elements
+// with their own class (e.g. .logo) keep their box; bare spans are replaced.
+document.querySelectorAll<HTMLElement>('[data-icon]').forEach((el) => {
+  const svg = icon(el.dataset.icon as IconName);
+  if (el.classList.length) el.replaceChildren(svg);
+  else el.replaceWith(svg);
+});
+
 // --- chat -------------------------------------------------------------------
 
 const log = $('log', HTMLDivElement);
+const empty = $('empty');
 const input = $('input', HTMLTextAreaElement);
 const sendBtn = $('send', HTMLButtonElement);
 
-const scrollDown = (): void => {
-  log.scrollTop = log.scrollHeight;
+const appendToLog = (el: HTMLElement): HTMLElement => {
+  empty.hidden = true;
+  log.append(el);
+  log.scrollTo({ top: log.scrollHeight, behavior: 'smooth' });
+  return el;
 };
 
-const addBubble = (role: 'user' | 'assistant' | 'error', text: string, meta?: string): HTMLElement => {
-  const bubble = h('div', { className: `msg msg-${role}` }, h('div', { className: 'msg-text', text }));
-  if (meta) bubble.append(h('div', { className: 'msg-meta', text: meta }));
-  log.append(bubble);
-  scrollDown();
-  return bubble;
+const addMessage = (role: 'user' | 'assistant' | 'error', text: string, footer?: string): HTMLElement => {
+  const variant = role === 'user' ? 'bubble-default' : role === 'error' ? 'bubble-destructive' : 'bubble-muted';
+  const content = h('div', 'message-content', h('div', `bubble ${variant}`, text));
+  if (footer) content.append(h('div', 'message-footer', footer));
+  const msg = h('div', 'message');
+  msg.dataset.align = role === 'user' ? 'end' : 'start';
+  if (role !== 'user') msg.append(h('div', 'message-avatar', icon(role === 'error' ? 'circle-alert' : 'bot')));
+  msg.append(content);
+  return appendToLog(msg);
 };
 
-const describeCreate = (item: ProposalItemView): string => {
-  const parts: string[] = [];
-  if (item.parent) parts.push(`Subtask von „${item.parent}“`);
-  if (item.project) parts.push(`📁 ${item.project}`);
-  if (item.dueDay) parts.push(`📅 ${item.dueDay}`);
-  if (item.estimateMin) parts.push(`⏱ ${String(item.estimateMin)} min`);
-  if (item.tags?.length) parts.push(`🏷 ${item.tags.join(', ')}`);
-  return parts.join('  ·  ');
-};
+const createItemBody = (item: ProposalItemView): HTMLElement => {
+  const body = h('div', 'item-body', h('div', 'item-title', icon(item.kind === 'create' ? 'plus' : 'pencil'), item.title));
+  const badges = h('div', 'item-badges');
+  if (item.parent) badges.append(badge(null, `Subtask von ${item.parent}`, 'badge-secondary'));
+  if (item.project) badges.append(badge('folder', item.project));
+  if (item.dueDay) badges.append(badge('calendar', item.dueDay));
+  if (item.estimateMin) badges.append(badge('clock', `${String(item.estimateMin)} min`));
+  for (const t of item.tags ?? []) badges.append(badge('tag', t));
+  if (badges.childElementCount) body.append(badges);
 
-const renderItem = (item: ProposalItemView): HTMLElement => {
-  const checkbox = h('input');
-  checkbox.type = 'checkbox';
-  checkbox.checked = true;
-  checkbox.dataset.index = String(item.index);
-
-  const body = h(
-    'div',
-    { className: 'item-body' },
-    h('div', { className: 'item-title', text: `${item.kind === 'create' ? '＋' : '✎'} ${item.title}` }),
-  );
   if (item.kind === 'create') {
-    const meta = describeCreate(item);
-    if (meta) body.append(h('div', { className: 'item-meta', text: meta }));
-    if (item.notes) body.append(h('div', { className: 'item-notes', text: item.notes }));
+    if (item.notes) body.append(h('div', 'item-notes', item.notes));
     if (item.subtasks?.length) {
-      const ul = h('ul', { className: 'item-subs' });
+      const subs = h('div', 'item-subs');
       for (const s of item.subtasks) {
-        const extra = [s.dueDay, s.estimateMin ? `${String(s.estimateMin)} min` : ''].filter(Boolean).join(', ');
-        ul.append(h('li', { text: extra ? `${s.title} (${extra})` : s.title }));
+        const extra = [s.dueDay, s.estimateMin ? `${String(s.estimateMin)} min` : ''].filter(Boolean).join(' · ');
+        subs.append(h('div', undefined, s.title, extra && h('span', 'muted', ` · ${extra}`)));
       }
-      body.append(ul);
+      body.append(subs);
     }
-  } else {
-    if (item.project) body.append(h('div', { className: 'item-meta', text: `📁 ${item.project}` }));
-    for (const [field, from, to] of item.diff ?? []) {
-      body.append(h('div', { className: 'item-diff', text: `${field}: ${from} → ${to}` }));
+  } else if (item.diff?.length) {
+    const dl = h('dl', 'item-diff');
+    for (const [field, from, to] of item.diff) {
+      dl.append(h('dt', undefined, field), h('dd', undefined, h('del', undefined, from), ' → ', to));
     }
+    body.append(dl);
   }
-  const label = h('label', { className: 'item' }, checkbox, body);
-  return label;
+  return body;
 };
 
 const renderProposal = (proposal: ProposalView): void => {
-  const card = h('div', { className: 'card proposal' });
-  card.append(h('div', { className: 'proposal-head', text: `Vorschlag – ${String(proposal.items.length)} Änderung(en)` }));
-  const list = h('div', { className: 'items' });
-  list.append(...proposal.items.map(renderItem));
-  card.append(list);
+  const count = proposal.items.length;
+  const description = h('div', 'card-description', 'Auswahl prüfen, dann übernehmen.');
+  const card = h(
+    'div',
+    'card proposal',
+    h(
+      'div',
+      'card-header',
+      h('div', 'card-title', `Vorschlag · ${String(count)} ${count === 1 ? 'Änderung' : 'Änderungen'}`),
+      description,
+    ),
+  );
 
-  const applyBtn = h('button', { className: 'btn-primary', text: 'Übernehmen' });
-  const discardBtn = h('button', { text: 'Verwerfen' });
-  const status = h('div', { className: 'proposal-status' });
-  card.append(h('div', { className: 'actions' }, applyBtn, discardBtn), status);
+  const checkboxes: HTMLInputElement[] = [];
+  const list = h('div', 'proposal-items');
+  for (const item of proposal.items) {
+    const checkbox = h('input', 'checkbox');
+    checkbox.type = 'checkbox';
+    checkbox.checked = true;
+    checkbox.dataset.index = String(item.index);
+    checkboxes.push(checkbox);
+    list.append(h('label', 'proposal-item', checkbox, createItemBody(item)));
+  }
+  card.append(h('div', 'card-content', list));
 
-  const finish = (text: string): void => {
-    applyBtn.remove();
-    discardBtn.remove();
-    list.querySelectorAll('input').forEach((c) => {
+  const applyLabel = h('span');
+  const applyBtn = h('button', 'btn btn-default btn-sm', icon('check'), applyLabel);
+  applyBtn.type = 'button';
+  const discardBtn = h('button', 'btn btn-outline btn-sm', icon('x'), 'Verwerfen');
+  discardBtn.type = 'button';
+  const footer = h('div', 'card-footer border-t', applyBtn, discardBtn);
+  card.append(footer);
+
+  const selected = (): number[] => checkboxes.filter((c) => c.checked).map((c) => Number(c.dataset.index));
+  const updateApplyLabel = (): void => {
+    const n = selected().length;
+    applyLabel.textContent = n === count ? 'Übernehmen' : `${String(n)} von ${String(count)} übernehmen`;
+    applyBtn.disabled = n === 0;
+  };
+  checkboxes.forEach((c) => {
+    c.addEventListener('change', updateApplyLabel);
+  });
+  updateApplyLabel();
+
+  const finish = (...status: HTMLElement[]): void => {
+    checkboxes.forEach((c) => {
       c.disabled = true;
     });
-    status.textContent = text;
+    description.remove();
+    footer.replaceChildren(h('div', 'proposal-status', ...status));
   };
 
   applyBtn.addEventListener('click', () => {
-    const selected = [...list.querySelectorAll<HTMLInputElement>('input:checked')].map((c) => Number(c.dataset.index));
-    if (!selected.length) {
-      status.textContent = 'Nichts ausgewählt.';
-      return;
-    }
     applyBtn.disabled = true;
     discardBtn.disabled = true;
-    status.textContent = 'Wird ausgeführt …';
-    void send({ type: 'apply', sessionId, proposalId: proposal.id, selected }).then((res) => {
+    applyBtn.replaceChildren(icon('loader-circle', 'spinner'), applyLabel);
+    applyLabel.textContent = 'Wird ausgeführt …';
+    void send({ type: 'apply', sessionId, proposalId: proposal.id, selected: selected() }).then((res) => {
       if (!res.ok) {
-        status.textContent = `Fehler: ${res.error}`;
-        applyBtn.disabled = false;
         discardBtn.disabled = false;
+        applyBtn.replaceChildren(icon('check'), applyLabel);
+        updateApplyLabel();
+        description.textContent = `Fehler: ${res.error}`;
         return;
       }
       const failed = res.data.filter((r) => !r.ok);
+      const done = res.data.length - failed.length;
       finish(
-        failed.length
-          ? `✓ ${String(res.data.length - failed.length)} ausgeführt, ✗ ${failed.map((f) => `${f.title}: ${f.error ?? ''}`).join('; ')}`
-          : `✓ ${String(res.data.length)} ausgeführt`,
+        ...(done ? [badge('check', `${String(done)} ausgeführt`, 'badge-secondary')] : []),
+        ...failed.map((f) => badge('x', `${f.title}: ${f.error ?? 'Fehler'}`, 'badge-destructive')),
       );
     });
   });
 
   discardBtn.addEventListener('click', () => {
     void send({ type: 'discard', sessionId, proposalId: proposal.id });
-    finish('Verworfen.');
+    finish(badge('x', 'Verworfen'));
   });
 
-  log.append(card);
-  scrollDown();
+  appendToLog(card);
 };
 
+let typing: HTMLElement | null = null;
 const setBusy = (busy: boolean): void => {
   sendBtn.disabled = busy;
   input.disabled = busy;
-  $('typing').hidden = !busy;
+  typing?.remove();
+  typing = busy
+    ? appendToLog(
+        h(
+          'div',
+          'message',
+          h('div', 'message-avatar', icon('bot')),
+          h('div', 'typing', icon('loader-circle', 'spinner'), 'Denkt nach …'),
+        ),
+      )
+    : null;
 };
 
 const submit = async (): Promise<void> => {
   const text = input.value.trim();
   if (!text || sendBtn.disabled) return;
   input.value = '';
-  $('examples').hidden = true;
-  addBubble('user', text);
+  addMessage('user', text);
   setBusy(true);
   try {
     const res = await send({ type: 'chat', sessionId, text });
+    setBusy(false);
     if (!res.ok) {
-      addBubble('error', res.error);
+      addMessage('error', res.error);
       return;
     }
     const data: ChatResponse = res.data;
     const tools = data.toolCalls.length ? `Tools: ${[...new Set(data.toolCalls)].join(', ')}` : undefined;
-    addBubble('assistant', data.reply || '(keine Antwort)', tools);
+    addMessage('assistant', data.reply || '(keine Antwort)', tools);
     if (data.proposal) renderProposal(data.proposal);
   } catch (e) {
-    addBubble('error', e instanceof Error ? e.message : String(e));
-  } finally {
     setBusy(false);
+    addMessage('error', e instanceof Error ? e.message : String(e));
+  } finally {
     input.focus();
   }
 };
 
-sendBtn.addEventListener('click', () => void submit());
+$('composer', HTMLFormElement).addEventListener('submit', (e) => {
+  e.preventDefault();
+  void submit();
+});
 input.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
     e.preventDefault();
@@ -186,12 +235,14 @@ document.querySelectorAll<HTMLButtonElement>('#examples button').forEach((btn) =
   btn.addEventListener('click', () => {
     input.value = btn.dataset.text ?? btn.textContent;
     input.focus();
+    input.setSelectionRange(input.value.length, input.value.length);
   });
 });
 $('reset').addEventListener('click', () => {
   void send({ type: 'reset', sessionId });
-  log.replaceChildren();
-  $('examples').hidden = false;
+  log.replaceChildren(empty);
+  empty.hidden = false;
+  input.focus();
 });
 
 // --- settings ---------------------------------------------------------------
@@ -203,12 +254,13 @@ const field = (name: keyof Settings | 'apiKey'): HTMLInputElement | HTMLTextArea
   return el;
 };
 const settingsStatus = $('settings-status');
+const clearKey = $('clear-key', HTMLInputElement);
 
 const fillForm = ({ settings, hasApiKey }: SettingsResponse): void => {
   for (const [key, value] of Object.entries(settings)) field(key as keyof Settings).value = String(value);
   const apiKey = field('apiKey');
   apiKey.value = '';
-  apiKey.placeholder = hasApiKey ? '•••••• gespeichert (leer lassen = behalten)' : 'kein Key gespeichert';
+  apiKey.placeholder = hasApiKey ? '•••••••• gespeichert – leer lassen zum Behalten' : 'Kein Key gespeichert';
   $('no-model-hint').hidden = Boolean(settings.chatModel);
 };
 
@@ -220,8 +272,6 @@ const loadSettings = async (): Promise<void> => {
 
 form.addEventListener('submit', (e) => {
   e.preventDefault();
-  const apiKeyValue = field('apiKey').value.trim();
-  const clearKey = $('clear-key', HTMLInputElement).checked;
   const settings: Partial<Settings> = {
     baseUrl: field('baseUrl').value,
     chatModel: field('chatModel').value,
@@ -236,28 +286,33 @@ form.addEventListener('submit', (e) => {
   void send({
     type: 'saveSettings',
     settings,
-    apiKey: clearKey ? '' : apiKeyValue || undefined,
+    apiKey: clearKey.checked ? '' : field('apiKey').value.trim() || undefined,
   }).then((res) => {
     if (!res.ok) {
       settingsStatus.textContent = `Fehler: ${res.error}`;
       return;
     }
-    $('clear-key', HTMLInputElement).checked = false;
+    clearKey.checked = false;
     fillForm(res.data);
     settingsStatus.textContent = 'Gespeichert.';
   });
 });
 
 $('load-models').addEventListener('click', () => {
-  settingsStatus.textContent = 'Lade Modelle … (gespeicherte Base-URL/Key)';
+  settingsStatus.textContent = 'Verbinde …';
   void send({ type: 'listModels' }).then((res) => {
     if (!res.ok) {
       settingsStatus.textContent = `Verbindung fehlgeschlagen: ${res.error}`;
       return;
     }
-    const list = $('models');
-    list.replaceChildren(...res.data.map((id) => h('option', { text: id })));
-    settingsStatus.textContent = `Verbindung ok – ${String(res.data.length)} Modelle gefunden.`;
+    $('models').replaceChildren(
+      ...res.data.map((id) => {
+        const option = h('option');
+        option.value = id;
+        return option;
+      }),
+    );
+    settingsStatus.textContent = `Verbindung ok · ${String(res.data.length)} Modelle gefunden.`;
   });
 });
 
@@ -266,8 +321,8 @@ $('load-models').addEventListener('click', () => {
 const showTab = (tab: 'chat' | 'settings'): void => {
   $('view-chat').hidden = tab !== 'chat';
   $('view-settings').hidden = tab !== 'settings';
-  $('tab-chat').classList.toggle('active', tab === 'chat');
-  $('tab-settings').classList.toggle('active', tab === 'settings');
+  $('tab-chat').setAttribute('aria-selected', String(tab === 'chat'));
+  $('tab-settings').setAttribute('aria-selected', String(tab === 'settings'));
   if (tab === 'settings') void loadSettings();
 };
 $('tab-chat').addEventListener('click', () => {

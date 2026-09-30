@@ -2,7 +2,7 @@
 // ready for Settings → Plugins → "Choose plugin file" in Super Productivity.
 //
 // plugin.js: host-side bundle (IIFE; evaluated via `new Function` by the app).
-// index.html: iframe UI with its bundle inlined – the iframe is served via
+// index.html: iframe UI with its styles and bundle inlined – the iframe is served via
 // srcdoc, so it cannot load extra files from the ZIP.
 
 import { build } from 'esbuild';
@@ -40,11 +40,16 @@ const uiJs = uiBundle.outputFiles[0]?.text;
 if (!pluginJs || !uiJs) throw new Error('esbuild produced no output');
 
 writeFileSync(join(out, 'plugin.js'), pluginJs);
-const html = readFileSync(join(root, 'src', 'ui', 'index.html'), 'utf8');
-const placeholder = '/*__UI_SCRIPT__*/';
-if (!html.includes(placeholder)) throw new Error('UI script placeholder missing in index.html');
+const inline = (html: string, placeholder: string, content: string): string => {
+  if (!html.includes(placeholder)) throw new Error(`${placeholder} missing in index.html`);
+  return html.replace(placeholder, () => content);
+};
+const css = readFileSync(join(root, 'src', 'ui', 'styles.css'), 'utf8');
+let html = readFileSync(join(root, 'src', 'ui', 'index.html'), 'utf8');
+html = inline(html, '/*__UI_STYLES__*/', css.replaceAll('</style', '<\\/style'));
 // "</script" inside the bundle would terminate the inline script element.
-writeFileSync(join(out, 'index.html'), html.replace(placeholder, () => uiJs.replaceAll('</script', '<\\/script')));
+html = inline(html, '/*__UI_SCRIPT__*/', uiJs.replaceAll('</script', '<\\/script'));
+writeFileSync(join(out, 'index.html'), html);
 cpSync(join(root, 'src', 'manifest.json'), join(out, 'manifest.json'));
 cpSync(join(root, 'src', 'icon.svg'), join(out, 'icon.svg'));
 
