@@ -1,0 +1,25 @@
+{
+  "name": "sp-butler",
+  "version": "0.1.0",
+  "description": "Super Productivity plugin: manage tasks in natural language via an OpenAI-compatible endpoint",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "build": "node scripts/build.ts",
+    "test": "node --test \"test/**/*.test.ts\"",
+    "typecheck": "tsc",
+    "lint": "eslint .",
+    "check": "npm run typecheck && npm run lint && npm test && npm run build"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^22.20.4",
+    "esbuild": "^0.28.2",
+    "eslint": "^10.11.0",
+    "typescript": "~6.0.3",
+    "typescript-eslint": "^8.71.0"
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "id": "sp-butler",
+  "name": "SP Butler",
+  "version": "0.1.0",
+  "manifestVersion": 1,
+  "minSupVersion": "18.0.0",
+  "description": "Create, query and bulk-edit tasks in natural language using any OpenAI-compatible endpoint.",
+  "author": "Marcel Cremer",
+  "hooks": ["persistedDataChanged"],
+  "permissions": [
+    "getTasks",
+    "getAllProjects",
+    "addProject",
+    "getAllTags",
+    "addTag",
+    "addTask",
+    "updateTask",
+    "showSnack",
+    "persistDataSynced",
+    "loadSyncedData",
+    "setSecret",
+    "getSecret",
+    "deleteSecret"
+  ],
+  "iFrame": true,
+  "sidePanel": true,
+  "uiKit": false,
+  "icon": "icon.svg",
+  "i18n": {
+    "languages": ["en", "de"]
+  }
+}

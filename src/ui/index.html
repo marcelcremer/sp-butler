@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>SP Butler</title>
+    <style>
+      /*__UI_STYLES__*/
+    </style>
+  </head>
+  <!-- Text comes from i18n/*.json via data-i18n* attributes (see src/ui/i18n.ts). -->
+  <body>
+    <header class="app-header">
+      <div class="app-title"><span class="logo" data-icon="bot"></span>SP Butler</div>
+      <div class="tabs-list" role="tablist">
+        <button id="tab-chat" class="tabs-trigger" role="tab" aria-selected="true" type="button" data-i18n="UI.TAB_CHAT"></button>
+        <button id="tab-settings" class="tabs-trigger" role="tab" aria-selected="false" type="button" data-i18n="UI.TAB_SETTINGS"></button>
+      </div>
+      <button id="reset" class="btn btn-ghost btn-icon-sm" type="button" data-i18n-title="UI.NEW_CONVERSATION">
+        <span data-icon="rotate-ccw"></span><span class="sr-only" data-i18n="UI.NEW_CONVERSATION"></span>
+      </button>
+    </header>
+
+    <section id="view-chat" class="view" role="tabpanel">
+      <div id="no-model-hint" class="alert" hidden>
+        <span data-icon="circle-alert"></span>
+        <div>
+          <div class="alert-title" data-i18n="UI.NO_MODEL_TITLE"></div>
+          <div class="muted" data-i18n="UI.NO_MODEL_TEXT"></div>
+          <button id="no-model-link" class="link" type="button" data-i18n="UI.OPEN_SETTINGS"></button>
+        </div>
+      </div>
+      <div id="log" class="log">
+        <div id="empty" class="empty">
+          <div class="empty-media" data-icon="sparkles"></div>
+          <div>
+            <div class="empty-title" data-i18n="UI.EMPTY_TITLE"></div>
+            <p class="empty-description" data-i18n="UI.EMPTY_DESCRIPTION"></p>
+          </div>
+          <div id="examples" class="empty-content">
+            <button class="btn btn-outline btn-block" type="button" data-prompt="UI.EXAMPLE_CREATE">
+              <span data-icon="plus"></span><span data-i18n="UI.EXAMPLE_CREATE"></span>
+            </button>
+            <button class="btn btn-outline btn-block" type="button" data-prompt="UI.EXAMPLE_BRAIN_DUMP_PREFIX">
+              <span data-icon="brain"></span><span data-i18n="UI.EXAMPLE_BRAIN_DUMP_LABEL"></span>
+            </button>
+            <button class="btn btn-outline btn-block" type="button" data-prompt="UI.EXAMPLE_DUE_THIS_WEEK">
+              <span data-icon="circle-question-mark"></span><span data-i18n="UI.EXAMPLE_DUE_THIS_WEEK"></span>
+            </button>
+            <button class="btn btn-outline btn-block" type="button" data-prompt="UI.EXAMPLE_MOVE_TODAY">
+              <span data-icon="calendar-arrow-up"></span><span data-i18n="UI.EXAMPLE_MOVE_TODAY"></span>
+            </button>
+          </div>
+        </div>
+      </div>
+      <form id="composer" class="composer">
+        <div class="input-group">
+          <textarea
+            id="input"
+            rows="1"
+            data-i18n-placeholder="UI.COMPOSER_PLACEHOLDER"
+            data-i18n-aria-label="UI.COMPOSER_LABEL"
+          ></textarea>
+          <div class="input-group-addon">
+            <span class="kbd">Enter</span> <span data-i18n="UI.HINT_SEND"></span> ·
+            <span class="kbd">Shift</span>+<span class="kbd">Enter</span> <span data-i18n="UI.HINT_NEW_LINE"></span>
+            <span class="spacer"></span>
+            <button id="send" class="btn btn-default btn-icon-sm" type="submit" data-i18n-title="UI.SEND">
+              <span data-icon="arrow-up"></span><span class="sr-only" data-i18n="UI.SEND"></span>
+            </button>
+          </div>
+        </div>
+      </form>
+    </section>
+
+    <section id="view-settings" class="view" role="tabpanel" hidden>
+      <form id="settings-form" class="settings" autocomplete="off">
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title" data-i18n="SETTINGS.ENDPOINT_TITLE"></div>
+            <div class="card-description" data-i18n="SETTINGS.ENDPOINT_DESCRIPTION"></div>
+          </div>
+          <div class="card-content">
+            <div class="field">
+              <label class="label" for="f-baseUrl" data-i18n="SETTINGS.BASE_URL"></label>
+              <input id="f-baseUrl" class="input" name="baseUrl" type="url" required placeholder="https://ai-2.1nt.eu/v1" />
+              <p class="field-description" data-i18n="SETTINGS.BASE_URL_HINT"></p>
+            </div>
+            <div class="field">
+              <label class="label" for="f-apiKey" data-i18n="SETTINGS.API_KEY"></label>
+              <input id="f-apiKey" class="input" name="apiKey" type="password" />
+              <p class="field-description" data-i18n="SETTINGS.API_KEY_HINT"></p>
+            </div>
+            <label class="field field-inline label">
+              <input id="clear-key" class="checkbox" type="checkbox" /> <span data-i18n="SETTINGS.DELETE_KEY"></span>
+            </label>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title" data-i18n="SETTINGS.MODELS_TITLE"></div>
+            <div class="card-description" data-i18n="SETTINGS.MODELS_DESCRIPTION"></div>
+          </div>
+          <div class="card-content">
+            <div class="field">
+              <label class="label" for="f-chatModel" data-i18n="SETTINGS.CHAT_MODEL"></label>
+              <input id="f-chatModel" class="input" name="chatModel" list="models" required />
+              <p class="field-description" data-i18n="SETTINGS.CHAT_MODEL_HINT"></p>
+            </div>
+            <div class="field">
+              <label class="label" for="f-embeddingModel" data-i18n="SETTINGS.EMBEDDING_MODEL"></label>
+              <input id="f-embeddingModel" class="input" name="embeddingModel" list="models" data-i18n-placeholder="SETTINGS.OPTIONAL" />
+              <p class="field-description" data-i18n="SETTINGS.EMBEDDING_MODEL_HINT"></p>
+            </div>
+            <div class="field">
+              <label class="label" for="f-rerankModel" data-i18n="SETTINGS.RERANK_MODEL"></label>
+              <input id="f-rerankModel" class="input" name="rerankModel" list="models" data-i18n-placeholder="SETTINGS.OPTIONAL" />
+              <p class="field-description" data-i18n="SETTINGS.RERANK_MODEL_HINT"></p>
+            </div>
+            <datalist id="models"></datalist>
+          </div>
+          <div class="card-footer">
+            <button id="load-models" class="btn btn-outline btn-sm" type="button">
+              <span data-icon="check"></span><span data-i18n="SETTINGS.TEST_CONNECTION"></span>
+            </button>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title" data-i18n="SETTINGS.BEHAVIOR_TITLE"></div>
+          </div>
+          <div class="card-content">
+            <div class="field-row">
+              <div class="field">
+                <label class="label" for="f-temperature" data-i18n="SETTINGS.TEMPERATURE"></label>
+                <input id="f-temperature" class="input" name="temperature" type="number" min="0" max="2" step="0.1" />
+              </div>
+              <div class="field">
+                <label class="label" for="f-maxToolRounds" data-i18n="SETTINGS.TOOL_ROUNDS"></label>
+                <input id="f-maxToolRounds" class="input" name="maxToolRounds" type="number" min="1" max="20" />
+              </div>
+              <div class="field">
+                <label class="label" for="f-requestTimeoutMs" data-i18n="SETTINGS.TIMEOUT"></label>
+                <input id="f-requestTimeoutMs" class="input" name="requestTimeoutMs" type="number" min="5000" step="1000" />
+              </div>
+            </div>
+            <div class="field">
+              <label class="label" for="f-customInstructions" data-i18n="SETTINGS.CUSTOM_INSTRUCTIONS"></label>
+              <textarea
+                id="f-customInstructions"
+                class="textarea"
+                name="customInstructions"
+                rows="3"
+                data-i18n-placeholder="SETTINGS.CUSTOM_INSTRUCTIONS_PLACEHOLDER"
+              ></textarea>
+            </div>
+          </div>
+        </div>
+
+        <div class="settings-actions">
+          <button class="btn btn-default" type="submit" data-i18n="SETTINGS.SAVE"></button>
+          <span id="settings-status" class="muted" role="status"></span>
+        </div>
+      </form>
+    </section>
+
+    <script>
+      /*__UI_SCRIPT__*/
+    </script>
+  </body>
+</html>
