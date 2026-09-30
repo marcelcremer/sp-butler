@@ -51,6 +51,11 @@ export interface SnackCfg {
   ico?: string;
 }
 
+/** The part of the iframe-injected PluginAPI the UI uses (calls go over the bridge). */
+export interface PluginIframeApi {
+  getCurrentLanguage(): Promise<string>;
+}
+
 export interface PluginLog {
   log: (...args: unknown[]) => void;
   warn: (...args: unknown[]) => void;
@@ -75,6 +80,8 @@ export interface PluginApi extends PluginDataApi {
   showIndexHtmlAsView(): void;
   showSnack(cfg: SnackCfg): void;
   onMessage?(handler: (message: unknown) => Promise<unknown>): void;
+  /** Looks up i18n/<lang>.json from the plugin ZIP, falls back to en, then to the key. */
+  translate(key: string, params?: Record<string, string | number>): string;
   persistDataSynced(dataStr: string, key?: string): Promise<void>;
   loadSyncedData(key?: string): Promise<string | null>;
   setSecret(key: string, value: string): Promise<void>;

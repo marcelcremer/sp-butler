@@ -46,9 +46,9 @@ describe('executor', () => {
       settings: settings(),
       proposal,
     });
-    assert.deepEqual(await exec('rm_rf', '{}'), { error: 'Unbekanntes Tool: rm_rf' });
-    assert.deepEqual(await exec('search_tasks', '{nope'), { error: 'Argumente sind kein gültiges JSON.' });
-    assert.deepEqual(await exec('search_tasks', '[]'), { error: 'Argumente müssen ein JSON-Objekt sein.' });
+    assert.deepEqual(await exec('rm_rf', '{}'), { error: 'Unknown tool: rm_rf' });
+    assert.deepEqual(await exec('search_tasks', '{nope'), { error: 'Arguments are not valid JSON.' });
+    assert.deepEqual(await exec('search_tasks', '[]'), { error: 'Arguments must be a JSON object.' });
     assert.deepEqual(await exec('search_tasks', ''), await exec('search_tasks', '{}'));
   });
 });
@@ -70,30 +70,30 @@ describe('search_tasks', () => {
     const res = await run('search_tasks', { dueFrom: '2026-09-28', dueTo: '2026-10-04' });
     assert.deepEqual(
       (res.tasks as { title: string }[]).map((t) => t.title),
-      ['Milch kaufen', 'Brot kaufen', 'TÜV Termin', 'Belege sammeln'],
+      ['Buy milk', 'Buy bread', 'Car inspection', 'Collect receipts'],
     );
   });
 
   it('answers "what is open in project X"', async () => {
-    const res = await run('search_tasks', { project: 'Haushalt' });
+    const res = await run('search_tasks', { project: 'Household' });
     assert.equal(res.total, 3);
   });
 
   it('returns known projects on a miss', async () => {
-    const res = await run('search_tasks', { project: 'Garten' });
-    assert.match(String(res.error), /Garten/);
-    assert.deepEqual(res.knownProjects, ['Inbox', 'Auto & Werkstatt', 'Haushalt']);
+    const res = await run('search_tasks', { project: 'Garden' });
+    assert.match(String(res.error), /Garden/);
+    assert.deepEqual(res.knownProjects, ['Inbox', 'Car & Garage', 'Household']);
   });
 
   it('validates dates and status', async () => {
-    assert.match(String((await run('search_tasks', { dueFrom: 'Freitag' })).error), /YYYY-MM-DD/);
+    assert.match(String((await run('search_tasks', { dueFrom: 'Friday' })).error), /YYYY-MM-DD/);
     assert.match(String((await run('search_tasks', { status: 'x' })).error), /status/);
   });
 
   it('falls back to the full list when no keyword matches', async () => {
-    const res = await run('search_tasks', { query: 'Lebensmittel', project: 'Haushalt' });
+    const res = await run('search_tasks', { query: 'groceries', project: 'Household' });
     assert.equal(res.total, 3);
-    assert.match(String(res.note), /selbst auswählen/);
+    assert.match(String(res.note), /pick the matching tasks/);
   });
 
   it('respects the limit', async () => {
@@ -105,53 +105,53 @@ describe('search_tasks', () => {
 
 describe('get_task', () => {
   it('returns subtasks and full notes', async () => {
-    const res = await run('get_task', { ref: await refOf('Steuer') });
-    assert.equal((res.subtasks as { title: string }[])[0]?.title, 'Belege sammeln');
+    const res = await run('get_task', { ref: await refOf('Taxes') });
+    assert.equal((res.subtasks as { title: string }[])[0]?.title, 'Collect receipts');
   });
 
   it('rejects unknown refs', async () => {
-    assert.match(String((await run('get_task', { ref: 't999' })).error), /Unbekannte ref/);
+    assert.match(String((await run('get_task', { ref: 't999' })).error), /Unknown ref/);
   });
 });
 
 describe('propose_create_tasks', () => {
-  it('turns "Morgen Reifenwechsel, 30 Minuten, Projekt Auto" into a proposal', async () => {
+  it('turns "Tire change tomorrow, 30 minutes, project Car" into a proposal', async () => {
     const res = await run('propose_create_tasks', {
-      tasks: [{ title: 'Reifenwechsel', project: 'Auto', estimateMinutes: 30, dueDay: '2026-10-01' }],
+      tasks: [{ title: 'Tire change', project: 'Car', estimateMinutes: 30, dueDay: '2026-10-01' }],
     });
     assert.equal(res.status, 'proposed');
     const item = proposal.items[0] as CreateItem;
-    assert.equal(item.projectId, 'p-auto');
+    assert.equal(item.projectId, 'p-car');
     assert.equal(item.timeEstimate, 30 * 60000);
     assert.equal(item.dueDay, '2026-10-01');
-    assert.equal(item.display.project, 'Auto & Werkstatt');
+    assert.equal(item.display.project, 'Car & Garage');
   });
 
   it('marks unknown projects and tags as new and dedupes tags', async () => {
     await run('propose_create_tasks', {
-      tasks: [{ title: 'Beet anlegen', project: 'Garten', tags: ['draußen', 'Draußen', '#dringend'] }],
+      tasks: [{ title: 'Plant a flower bed', project: 'Garden', tags: ['outdoor', 'Outdoor', '#urgent'] }],
     });
     const item = proposal.items[0] as CreateItem;
-    assert.equal(item.newProject, 'Garten');
-    assert.deepEqual(item.newTags, ['draußen']);
-    assert.deepEqual(item.tagIds, ['tag-dringend']);
+    assert.equal(item.newProject, 'Garden');
+    assert.deepEqual(item.newTags, ['outdoor']);
+    assert.deepEqual(item.tagIds, ['tag-urgent']);
   });
 
   it('supports brain dumps with subtasks', async () => {
     const res = await run('propose_create_tasks', {
       tasks: [
-        { title: 'Urlaub planen', subtasks: [{ title: 'Hotel buchen' }, { title: 'Hund versorgen', dueDay: null }] },
-        { title: 'Zahnarzt anrufen', estimateMinutes: 5 },
+        { title: 'Plan vacation', subtasks: [{ title: 'Book hotel' }, { title: 'Arrange dog sitter', dueDay: null }] },
+        { title: 'Call the dentist', estimateMinutes: 5 },
       ],
     });
     assert.deepEqual(res.items, [
-      { n: 1, kind: 'create', title: 'Urlaub planen', subtasks: 2 },
-      { n: 2, kind: 'create', title: 'Zahnarzt anrufen' },
+      { n: 1, kind: 'create', title: 'Plan vacation', subtasks: 2 },
+      { n: 2, kind: 'create', title: 'Call the dentist' },
     ]);
   });
 
   it('adds subtasks to existing tasks via parentRef', async () => {
-    await run('propose_create_tasks', { tasks: [{ title: 'Kontoauszüge', parentRef: await refOf('Steuer') }] });
+    await run('propose_create_tasks', { tasks: [{ title: 'Bank statements', parentRef: await refOf('Taxes') }] });
     const item = proposal.items[0] as CreateItem;
     assert.equal(item.parentId, 'a5');
     assert.equal(item.projectId, 'INBOX');
@@ -159,15 +159,15 @@ describe('propose_create_tasks', () => {
 
   it('rejects nesting deeper than one level', async () => {
     const res = await run('propose_create_tasks', {
-      tasks: [{ title: 'x', parentRef: await refOf('Belege sammeln') }],
+      tasks: [{ title: 'x', parentRef: await refOf('Collect receipts') }],
     });
     assert.match(String(res.error), /Subtasks/);
     assert.equal(proposal.items.length, 0);
   });
 
   it('rejects invalid input', async () => {
-    assert.match(String((await run('propose_create_tasks', { tasks: [] })).error), /leer/);
-    assert.match(String((await run('propose_create_tasks', { tasks: [{ title: ' ' }] })).error), /Titel/);
+    assert.match(String((await run('propose_create_tasks', { tasks: [] })).error), /empty/);
+    assert.match(String((await run('propose_create_tasks', { tasks: [{ title: ' ' }] })).error), /title/);
     assert.match(
       String((await run('propose_create_tasks', { tasks: [{ title: 'x', dueDay: 'morgen' }] })).error),
       /YYYY-MM-DD/,
@@ -181,13 +181,13 @@ describe('propose_update_tasks', () => {
     const changes = (today.tasks as { ref: string }[]).map((t) => ({ ref: t.ref, dueDay: '2026-10-02' }));
     const res = await run('propose_update_tasks', { changes });
     assert.equal((res.items as unknown[]).length, 3);
-    const tuv = proposal.items.find((i) => i.display.title === 'TÜV Termin') as UpdateItem;
-    assert.deepEqual(tuv.updates, { dueDay: '2026-10-02', dueWithTime: new Date(2026, 9, 2, 14, 30).getTime() });
-    assert.deepEqual(tuv.display.diff, [['Fällig', '2026-09-30', '2026-10-02']]);
+    const inspection = proposal.items.find((i) => i.display.title === 'Car inspection') as UpdateItem;
+    assert.deepEqual(inspection.updates, { dueDay: '2026-10-02', dueWithTime: new Date(2026, 9, 2, 14, 30).getTime() });
+    assert.deepEqual(inspection.display.diff, [['due', '2026-09-30', '2026-10-02']]);
   });
 
   it('marks shopping tasks as done', async () => {
-    const shopping = await run('search_tasks', { query: 'kaufen' });
+    const shopping = await run('search_tasks', { query: 'buy' });
     const changes = (shopping.tasks as { ref: string }[]).map((t) => ({ ref: t.ref, isDone: true }));
     await run('propose_update_tasks', { changes });
     assert.equal(proposal.items.length, 2);
@@ -199,9 +199,9 @@ describe('propose_update_tasks', () => {
   it('reports per-item errors and still proposes the valid ones', async () => {
     const res = await run('propose_update_tasks', {
       changes: [
-        { ref: await refOf('Milch kaufen'), title: 'Hafermilch kaufen' },
+        { ref: await refOf('Buy milk'), title: 'Buy oat milk' },
         { ref: 't999', isDone: true },
-        { ref: await refOf('Brot kaufen'), title: 'Brot kaufen' },
+        { ref: await refOf('Buy bread'), title: 'Buy bread' },
       ],
     });
     assert.equal((res.items as unknown[]).length, 1);
@@ -209,33 +209,33 @@ describe('propose_update_tasks', () => {
   });
 
   it('changes tags, project, notes and estimates', async () => {
-    const ref = await refOf('Waschmittel besorgen');
+    const ref = await refOf('Get detergent');
     await run('propose_update_tasks', {
       changes: [
         {
           ref,
-          addTags: ['dringend', 'drogerie'],
-          removeTags: ['einkaufen'],
-          project: 'Auto',
-          appendNotes: 'Sensitiv',
+          addTags: ['urgent', 'drugstore'],
+          removeTags: ['shopping'],
+          project: 'Car',
+          appendNotes: 'Sensitive skin',
           estimateMinutes: 15,
         },
       ],
     });
     const item = proposal.items[0] as UpdateItem;
-    assert.deepEqual(item.updates.tagIds, ['tag-dringend']);
-    assert.deepEqual(item.newTags, ['drogerie']);
-    assert.equal(item.updates.projectId, 'p-auto');
-    assert.equal(item.updates.notes, 'Sensitiv');
+    assert.deepEqual(item.updates.tagIds, ['tag-urgent']);
+    assert.deepEqual(item.newTags, ['drugstore']);
+    assert.equal(item.updates.projectId, 'p-car');
+    assert.equal(item.updates.notes, 'Sensitive skin');
     assert.equal(item.updates.timeEstimate, 15 * 60000);
   });
 
   it('refuses to move subtasks or into unknown projects', async () => {
-    const sub = await refOf('Belege sammeln');
+    const sub = await refOf('Collect receipts');
     const res = await run('propose_update_tasks', {
       changes: [
-        { ref: sub, project: 'Haushalt' },
-        { ref: await refOf('Milch kaufen'), project: 'Garten' },
+        { ref: sub, project: 'Household' },
+        { ref: await refOf('Buy milk'), project: 'Garden' },
       ],
     });
     assert.equal(res.status, 'nothing proposed');
@@ -243,7 +243,7 @@ describe('propose_update_tasks', () => {
   });
 
   it('can clear a due day', async () => {
-    await run('propose_update_tasks', { changes: [{ ref: await refOf('Milch kaufen'), dueDay: null }] });
+    await run('propose_update_tasks', { changes: [{ ref: await refOf('Buy milk'), dueDay: null }] });
     assert.deepEqual((proposal.items[0] as UpdateItem).updates, { dueDay: null, dueWithTime: null });
   });
 });

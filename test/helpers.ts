@@ -23,30 +23,30 @@ export const task = (partial: Partial<Task> & Pick<Task, 'id' | 'title'>): Task 
 export const fixture = (): { tasks: Task[]; projects: Project[]; tags: Tag[] } => ({
   projects: [
     { id: 'INBOX', title: 'Inbox' },
-    { id: 'p-auto', title: 'Auto & Werkstatt' },
-    { id: 'p-haus', title: 'Haushalt' },
-    { id: 'p-old', title: 'Altprojekt', isArchived: true },
+    { id: 'p-car', title: 'Car & Garage' },
+    { id: 'p-home', title: 'Household' },
+    { id: 'p-old', title: 'Old project', isArchived: true },
   ],
   tags: [
     { id: 'TODAY', title: 'Today' },
-    { id: 'tag-einkauf', title: 'einkaufen' },
-    { id: 'tag-dringend', title: 'dringend' },
+    { id: 'tag-shopping', title: 'shopping' },
+    { id: 'tag-urgent', title: 'urgent' },
   ],
   tasks: [
-    task({ id: 'a1', title: 'Milch kaufen', projectId: 'p-haus', tagIds: ['tag-einkauf'], dueDay: '2026-09-30', created: 1 }),
-    task({ id: 'a2', title: 'Brot kaufen', projectId: 'p-haus', tagIds: ['tag-einkauf'], dueDay: '2026-09-30', created: 2 }),
-    task({ id: 'a3', title: 'Waschmittel besorgen', projectId: 'p-haus', tagIds: ['tag-einkauf'], created: 3 }),
+    task({ id: 'a1', title: 'Buy milk', projectId: 'p-home', tagIds: ['tag-shopping'], dueDay: '2026-09-30', created: 1 }),
+    task({ id: 'a2', title: 'Buy bread', projectId: 'p-home', tagIds: ['tag-shopping'], dueDay: '2026-09-30', created: 2 }),
+    task({ id: 'a3', title: 'Get detergent', projectId: 'p-home', tagIds: ['tag-shopping'], created: 3 }),
     task({
       id: 'a4',
-      title: 'TÜV Termin',
-      projectId: 'p-auto',
+      title: 'Car inspection',
+      projectId: 'p-car',
       dueWithTime: new Date(2026, 8, 30, 14, 30).getTime(),
       timeEstimate: 60 * 60000,
       created: 4,
     }),
-    task({ id: 'a5', title: 'Steuer', projectId: 'INBOX', dueDay: '2026-10-05', subTaskIds: ['a6'], created: 5 }),
-    task({ id: 'a6', title: 'Belege sammeln', projectId: 'INBOX', parentId: 'a5', dueDay: '2026-10-03', created: 6 }),
-    task({ id: 'a7', title: 'Ölwechsel', projectId: 'p-auto', isDone: true, dueDay: '2026-09-20', created: 7 }),
+    task({ id: 'a5', title: 'Taxes', projectId: 'INBOX', dueDay: '2026-10-05', subTaskIds: ['a6'], created: 5 }),
+    task({ id: 'a6', title: 'Collect receipts', projectId: 'INBOX', parentId: 'a5', dueDay: '2026-10-03', created: 6 }),
+    task({ id: 'a7', title: 'Oil change', projectId: 'p-car', isDone: true, dueDay: '2026-09-20', created: 7 }),
   ],
 });
 

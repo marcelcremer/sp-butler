@@ -41,9 +41,9 @@ describe('dates', () => {
 
   it('builds a calendar with weekday names and relative labels', () => {
     const ctx = buildCalendarContext(NOW);
-    assert.match(ctx, /Heute \/ today: 2026-09-30 \(Mittwoch\)/);
-    assert.match(ctx, /2026-10-01 Donnerstag \/ Thursday \(morgen \/ tomorrow\)/);
-    assert.match(ctx, /2026-10-02 Freitag \/ Friday/);
-    assert.match(ctx, /Diese Woche \/ this week: 2026-09-28 bis 2026-10-04/);
+    assert.match(ctx, /Today: 2026-09-30 \(Wednesday\)/);
+    assert.match(ctx, /2026-10-01 Thursday \(tomorrow\)/);
+    assert.match(ctx, /2026-10-02 Friday \(day after tomorrow\)/);
+    assert.match(ctx, /This week: 2026-09-28 to 2026-10-04/);
   });
 });

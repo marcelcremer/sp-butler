@@ -7,7 +7,7 @@
 import type { Task } from '../types/plugin-api.ts';
 import { isDayStr, parseDayStr, taskDueDay, toDayStr } from './dates.ts';
 import type { LlmClient, ToolDefinition } from './llm-client.ts';
-import type { CreateSpec, DiffRow, Proposal, UpdateItem } from './proposal.ts';
+import type { CreateSpec, DiffRow, Proposal, TagLabel, UpdateItem } from './proposal.ts';
 import { applyFilters, rankTasks, type EmbeddingIndex, type TaskFilter } from './search.ts';
 import type { Settings } from './settings.ts';
 import {
@@ -22,16 +22,16 @@ import {
 
 const dayParam = (description: string): Record<string, unknown> => ({
   type: ['string', 'null'],
-  description: `${description} Format YYYY-MM-DD, null = kein Datum.`,
+  description: `${description} Format YYYY-MM-DD, null = no date.`,
 });
 
 const TASK_FIELDS = {
-  title: { type: 'string', description: 'Kurzer, prägnanter Titel (ohne Datum/Projekt/Dauer).' },
-  project: { type: 'string', description: 'Projektname (bestehende bevorzugen). Neuer Name legt das Projekt an.' },
-  tags: { type: 'array', items: { type: 'string' }, description: 'Tag-Namen. Unbekannte werden angelegt.' },
-  notes: { type: 'string', description: 'Notizen/Details (Markdown).' },
-  estimateMinutes: { type: 'number', description: 'Zeitschätzung in Minuten.' },
-  dueDay: dayParam('Fälligkeitstag.'),
+  title: { type: 'string', description: 'Short, concise title (without date, project or duration).' },
+  project: { type: 'string', description: 'Project name (prefer existing ones). An unknown name creates the project.' },
+  tags: { type: 'array', items: { type: 'string' }, description: 'Tag names. Unknown tags are created.' },
+  notes: { type: 'string', description: 'Notes/details (Markdown).' },
+  estimateMinutes: { type: 'number', description: 'Time estimate in minutes.' },
+  dueDay: dayParam('Due day.'),
 };
 
 export const TOOL_DEFINITIONS: ToolDefinition[] = [
@@ -40,20 +40,20 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
     function: {
       name: 'search_tasks',
       description:
-        'Sucht Tasks mit Filtern und optionaler (semantischer) Freitextsuche. Liefert Tasks mit kurzer Referenz (ref), ' +
-        'die für Änderungen verwendet wird. Vor jeder Änderung bestehender Tasks zuerst suchen.',
+        'Searches tasks with filters and an optional (semantic) free-text query. Returns tasks with a short reference (ref) ' +
+        'that is used for changes. Always search before changing existing tasks.',
       parameters: {
         type: 'object',
         properties: {
-          query: { type: 'string', description: 'Freitext, z.B. "Einkaufen". Weglassen für reine Filter.' },
-          project: { type: 'string', description: 'Projektname oder -id.' },
-          tag: { type: 'string', description: 'Tag-Name oder -id.' },
-          dueFrom: { type: 'string', description: 'Fällig ab (inklusive), YYYY-MM-DD.' },
-          dueTo: { type: 'string', description: 'Fällig bis (inklusive), YYYY-MM-DD. "Überfällig" = bis gestern.' },
-          noDueDay: { type: 'boolean', description: 'Nur Tasks ohne Fälligkeit.' },
-          status: { type: 'string', enum: ['open', 'done', 'all'], description: 'Standard: open.' },
-          includeSubtasks: { type: 'boolean', description: 'Standard: true.' },
-          limit: { type: 'number', description: 'Maximale Anzahl (Standard 40, höchstens 150).' },
+          query: { type: 'string', description: 'Free text, e.g. "groceries". Omit for filters only.' },
+          project: { type: 'string', description: 'Project name or id.' },
+          tag: { type: 'string', description: 'Tag name or id.' },
+          dueFrom: { type: 'string', description: 'Due on or after, YYYY-MM-DD.' },
+          dueTo: { type: 'string', description: 'Due on or before, YYYY-MM-DD. "Overdue" = up to yesterday.' },
+          noDueDay: { type: 'boolean', description: 'Only tasks without a due day.' },
+          status: { type: 'string', enum: ['open', 'done', 'all'], description: 'Default: open.' },
+          includeSubtasks: { type: 'boolean', description: 'Default: true.' },
+          limit: { type: 'number', description: 'Maximum number of tasks (default 40, at most 150).' },
         },
         additionalProperties: false,
       },
@@ -63,7 +63,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
     type: 'function',
     function: {
       name: 'get_task',
-      description: 'Details eines Tasks inklusive vollständiger Notizen und Subtasks.',
+      description: 'Details of a task including its full notes and subtasks.',
       parameters: {
         type: 'object',
         properties: { ref: { type: 'string' } },
@@ -77,8 +77,8 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
     function: {
       name: 'propose_create_tasks',
       description:
-        'Schlägt neue Tasks (optional mit Subtasks) vor. Der Nutzer bestätigt, bevor sie angelegt werden. ' +
-        'Für Brain-Dumps: sinnvoll gruppieren, zusammengehörige Schritte als Subtasks.',
+        'Proposes new tasks (optionally with subtasks). The user confirms before they are created. ' +
+        'For brain dumps: group sensibly, related steps become subtasks.',
       parameters: {
         type: 'object',
         properties: {
@@ -90,11 +90,11 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
                 ...TASK_FIELDS,
                 parentRef: {
                   type: 'string',
-                  description: 'ref eines bestehenden Tasks, wenn der neue Task dessen Subtask werden soll.',
+                  description: 'ref of an existing task if the new task should become its subtask.',
                 },
                 subtasks: {
                   type: 'array',
-                  description: 'Subtasks (nur eine Ebene).',
+                  description: 'Subtasks (one level only).',
                   items: {
                     type: 'object',
                     properties: {
@@ -122,8 +122,8 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
     function: {
       name: 'propose_update_tasks',
       description:
-        'Schlägt Änderungen an bestehenden Tasks vor: verschieben, erledigen, umbenennen, taggen, Projekt wechseln usw. ' +
-        'Nur angegebene Felder werden geändert. Der Nutzer bestätigt vor der Ausführung.',
+        'Proposes changes to existing tasks: reschedule, complete, rename, tag, move to another project, etc. ' +
+        'Only the given fields are changed. The user confirms before anything is applied.',
       parameters: {
         type: 'object',
         properties: {
@@ -132,14 +132,14 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
             items: {
               type: 'object',
               properties: {
-                ref: { type: 'string', description: 'ref aus search_tasks.' },
+                ref: { type: 'string', description: 'ref from search_tasks.' },
                 title: { type: 'string' },
-                notes: { type: 'string', description: 'Ersetzt die Notizen vollständig.' },
-                appendNotes: { type: 'string', description: 'Wird an die bestehenden Notizen angehängt.' },
-                estimateMinutes: { type: 'number', description: '0 entfernt die Schätzung.' },
-                dueDay: dayParam('Neuer Fälligkeitstag.'),
+                notes: { type: 'string', description: 'Replaces the notes entirely.' },
+                appendNotes: { type: 'string', description: 'Appended to the existing notes.' },
+                estimateMinutes: { type: 'number', description: '0 removes the estimate.' },
+                dueDay: dayParam('New due day.'),
                 isDone: { type: 'boolean' },
-                project: { type: 'string', description: 'In dieses bestehende Projekt verschieben.' },
+                project: { type: 'string', description: 'Move into this existing project.' },
                 addTags: { type: 'array', items: { type: 'string' } },
                 removeTags: { type: 'array', items: { type: 'string' } },
               },
@@ -177,7 +177,7 @@ const isArgs = (v: unknown): v is Args => typeof v === 'object' && v !== null &&
 const optString = (a: Args, key: string): string | undefined => {
   const v = a[key];
   if (v === undefined || v === null) return undefined;
-  if (typeof v !== 'string') throw new ToolInputError(`${key} muss ein String sein.`);
+  if (typeof v !== 'string') throw new ToolInputError(`${key} must be a string.`);
   return v;
 };
 
@@ -185,14 +185,14 @@ const optNumber = (a: Args, key: string): number | undefined => {
   const v = a[key];
   if (v === undefined || v === null) return undefined;
   const n = typeof v === 'string' ? Number(v) : v;
-  if (typeof n !== 'number' || !Number.isFinite(n)) throw new ToolInputError(`${key} muss eine Zahl sein.`);
+  if (typeof n !== 'number' || !Number.isFinite(n)) throw new ToolInputError(`${key} must be a number.`);
   return n;
 };
 
 const optBool = (a: Args, key: string): boolean | undefined => {
   const v = a[key];
   if (v === undefined || v === null) return undefined;
-  if (typeof v !== 'boolean') throw new ToolInputError(`${key} muss true/false sein.`);
+  if (typeof v !== 'boolean') throw new ToolInputError(`${key} must be true or false.`);
   return v;
 };
 
@@ -200,7 +200,7 @@ const stringList = (a: Args, key: string): string[] => {
   const v = a[key];
   if (v === undefined || v === null) return [];
   if (!Array.isArray(v) || !v.every((x) => typeof x === 'string')) {
-    throw new ToolInputError(`${key} muss eine Liste von Strings sein.`);
+    throw new ToolInputError(`${key} must be a list of strings.`);
   }
   return v.map((s) => s.trim()).filter(Boolean);
 };
@@ -208,7 +208,7 @@ const stringList = (a: Args, key: string): string[] => {
 const objectList = (a: Args, key: string): Args[] => {
   const v = a[key];
   if (v === undefined || v === null) return [];
-  if (!Array.isArray(v) || !v.every(isArgs)) throw new ToolInputError(`${key} muss eine Liste von Objekten sein.`);
+  if (!Array.isArray(v) || !v.every(isArgs)) throw new ToolInputError(`${key} must be a list of objects.`);
   return v;
 };
 
@@ -217,7 +217,7 @@ const optDay = (a: Args, key: string): string | null | undefined => {
   if (!(key in a)) return undefined;
   const v = a[key];
   if (v === null || v === '') return null;
-  if (!isDayStr(v)) throw new ToolInputError(`Ungültiges Datum für ${key}: ${JSON.stringify(v)} – erwartet YYYY-MM-DD.`);
+  if (!isDayStr(v)) throw new ToolInputError(`Invalid date for ${key}: ${JSON.stringify(v)} – expected YYYY-MM-DD.`);
   return v;
 };
 
@@ -232,14 +232,14 @@ export const createToolExecutor = (ctx: ToolContext): ToolExecutor => {
   };
   return async (name, rawArgs) => {
     const handler = handlers[name];
-    if (!handler) return { error: `Unbekanntes Tool: ${name}` };
+    if (!handler) return { error: `Unknown tool: ${name}` };
     let args: unknown;
     try {
       args = rawArgs.trim() ? JSON.parse(rawArgs) : {};
     } catch {
-      return { error: 'Argumente sind kein gültiges JSON.' };
+      return { error: 'Arguments are not valid JSON.' };
     }
-    if (!isArgs(args)) return { error: 'Argumente müssen ein JSON-Objekt sein.' };
+    if (!isArgs(args)) return { error: 'Arguments must be a JSON object.' };
     try {
       return await handler(args);
     } catch (e) {
@@ -259,7 +259,7 @@ const searchTasks = async (ctx: ToolContext, args: Args): Promise<unknown> => {
   const { ws, refs } = ctx;
   const status = optString(args, 'status');
   if (status !== undefined && status !== 'open' && status !== 'done' && status !== 'all') {
-    throw new ToolInputError('status muss open, done oder all sein.');
+    throw new ToolInputError('status must be open, done or all.');
   }
   const filter: TaskFilter = {
     project: optString(args, 'project'),
@@ -301,11 +301,11 @@ const searchTasks = async (ctx: ToolContext, args: Args): Promise<unknown> => {
       const hits = ranked.filter((r) => r.score > 0);
       list = (hits.length ? hits : ranked).map((r) => r.task);
       if (!hits.length) {
-        result.note = 'Kein Stichwort-Treffer; ungefilterte Liste – passende Tasks bitte selbst auswählen.';
+        result.note = 'No keyword match; unfiltered list – pick the matching tasks yourself.';
       }
     } else {
       list = ranked.map((r) => r.task);
-      result.note = 'Nach Relevanz sortiert; nicht jeder Treffer ist relevant – selbst prüfen.';
+      result.note = 'Sorted by relevance; not every hit is relevant – check yourself.';
     }
   } else {
     list = [...list].sort(compareByDue);
@@ -321,10 +321,10 @@ const searchTasks = async (ctx: ToolContext, args: Args): Promise<unknown> => {
 };
 
 const resolveRef = (ctx: ToolContext, ref: string | undefined): Task => {
-  if (!ref) throw new ToolInputError('ref fehlt.');
+  if (!ref) throw new ToolInputError('ref is missing.');
   const id = ctx.refs.idFor(ref);
   const task = id ? ctx.ws.taskById.get(id) : undefined;
-  if (!task) throw new ToolInputError(`Unbekannte ref "${ref}". Zuerst search_tasks aufrufen.`);
+  if (!task) throw new ToolInputError(`Unknown ref "${ref}". Call search_tasks first.`);
   return task;
 };
 
@@ -345,23 +345,23 @@ const getTask = (ctx: ToolContext, args: Args): unknown => {
 const resolveTags = (
   ctx: ToolContext,
   names: string[],
-): { tagIds: string[]; newTags: string[]; labels: string[] } => {
+): { tagIds: string[]; newTags: string[]; labels: TagLabel[] } => {
   const tagIds: string[] = [];
   const newTags: string[] = [];
-  const labels: string[] = [];
+  const labels: TagLabel[] = [];
   for (const name of names) {
     const tag = ctx.ws.findTag(name);
     if (tag) {
       if (!tagIds.includes(tag.id)) {
         tagIds.push(tag.id);
-        labels.push(tag.title);
+        labels.push({ name: tag.title, isNew: false });
       }
       continue;
     }
     const clean = name.replace(/^#/, '');
     if (!newTags.some((n) => normalizeName(n) === normalizeName(clean))) {
       newTags.push(clean);
-      labels.push(`${clean} (neu)`);
+      labels.push({ name: clean, isNew: true });
     }
   }
   return { tagIds, newTags, labels };
@@ -369,7 +369,7 @@ const resolveTags = (
 
 const estimateMs = (min: number | undefined): number | undefined => {
   if (min === undefined) return undefined;
-  if (min < 0) throw new ToolInputError(`Ungültige Zeitschätzung: ${min}`);
+  if (min < 0) throw new ToolInputError(`Invalid time estimate: ${min}`);
   return Math.round(min) * MIN;
 };
 
@@ -377,11 +377,12 @@ interface ProjectChoice {
   projectId?: string | null;
   newProject?: string;
   label?: string;
+  isNew?: boolean;
 }
 
 const buildCreateSpec = (ctx: ToolContext, raw: Args, project: ProjectChoice): CreateSpec => {
   const title = optString(raw, 'title')?.trim();
-  if (!title) throw new ToolInputError('Task ohne Titel.');
+  if (!title) throw new ToolInputError('Task without a title.');
   const tags = resolveTags(ctx, stringList(raw, 'tags'));
   const notes = optString(raw, 'notes')?.trim() || undefined;
   const estimateMin = optNumber(raw, 'estimateMinutes');
@@ -399,6 +400,7 @@ const buildCreateSpec = (ctx: ToolContext, raw: Args, project: ProjectChoice): C
     display: {
       title,
       project: project.label,
+      projectIsNew: project.isNew,
       tags: tags.labels,
       estimateMin: estimateMin ? Math.round(estimateMin) : undefined,
       dueDay: dueDay ?? undefined,
@@ -411,20 +413,20 @@ const chooseProject = (ctx: ToolContext, name: string | undefined): ProjectChoic
   if (!name?.trim()) return {};
   const p = ctx.ws.findProject(name);
   if (p) return { projectId: p.id, label: p.title };
-  return { newProject: name.trim(), label: `${name.trim()} (neu)` };
+  return { newProject: name.trim(), label: name.trim(), isNew: true };
 };
 
 const proposeCreate = (ctx: ToolContext, args: Args): unknown => {
   const rawTasks = objectList(args, 'tasks');
-  if (!rawTasks.length) throw new ToolInputError('tasks ist leer.');
+  if (!rawTasks.length) throw new ToolInputError('tasks is empty.');
   const items: CreateSpec[] = [];
   for (const raw of rawTasks) {
     const parentRef = optString(raw, 'parentRef');
     const rawSubs = objectList(raw, 'subtasks');
     if (parentRef) {
       const parent = resolveRef(ctx, parentRef);
-      if (parent.parentId) throw new ToolInputError('Subtasks können keine eigenen Subtasks haben.');
-      if (rawSubs.length) throw new ToolInputError('Ein neuer Subtask kann keine Subtasks haben.');
+      if (parent.parentId) throw new ToolInputError('Subtasks cannot have subtasks of their own.');
+      if (rawSubs.length) throw new ToolInputError('A new subtask cannot have subtasks.');
       const spec = buildCreateSpec(ctx, raw, { projectId: parent.projectId });
       spec.parentId = parent.id;
       spec.display.parent = parent.title;
@@ -440,13 +442,13 @@ const proposeCreate = (ctx: ToolContext, args: Args): unknown => {
   return {
     status: 'proposed',
     items: ctx.proposal.add(items.map((spec) => ({ kind: 'create', ...spec }))),
-    info: 'Wird dem Nutzer zur Bestätigung angezeigt – noch NICHT angelegt.',
+    info: 'Shown to the user for confirmation – NOT created yet.',
   };
 };
 
 const proposeUpdate = (ctx: ToolContext, args: Args): unknown => {
   const rawChanges = objectList(args, 'changes');
-  if (!rawChanges.length) throw new ToolInputError('changes ist leer.');
+  if (!rawChanges.length) throw new ToolInputError('changes is empty.');
   const items: UpdateItem[] = [];
   const errors: { ref: unknown; error: string }[] = [];
   for (const raw of rawChanges) {
@@ -459,12 +461,13 @@ const proposeUpdate = (ctx: ToolContext, args: Args): unknown => {
   return {
     status: items.length ? 'proposed' : 'nothing proposed',
     items: items.length ? ctx.proposal.add(items) : [],
-    ...(items.length ? { info: 'Wird dem Nutzer zur Bestätigung angezeigt – noch NICHT ausgeführt.' } : {}),
+    ...(items.length ? { info: 'Shown to the user for confirmation – NOT applied yet.' } : {}),
     ...(errors.length ? { errors } : {}),
   };
 };
 
-const fmtMin = (ms: number | undefined): string => (ms ? `${Math.round(ms / MIN)} min` : '–');
+/** Minutes as a plain number string (the UI adds the unit), '–' for none. */
+const fmtMin = (ms: number | undefined): string => (ms ? String(Math.round(ms / MIN)) : '–');
 
 /**
  * Rescheduling keeps a task's time of day if it has one; plain-day tasks only
@@ -490,48 +493,48 @@ const buildUpdateItem = (ctx: ToolContext, raw: Args): UpdateItem => {
   const title = optString(raw, 'title')?.trim();
   if (title && title !== task.title) {
     updates.title = title;
-    diff.push(['Titel', task.title, title]);
+    diff.push(['title', task.title, title]);
   }
 
   const notes = optString(raw, 'notes');
   if (notes !== undefined) {
     updates.notes = notes;
-    diff.push(['Notizen', truncate(task.notes ?? '–', 60), truncate(notes || '–', 60)]);
+    diff.push(['notes', truncate(task.notes ?? '–', 60), truncate(notes || '–', 60)]);
   }
   const appendNotes = optString(raw, 'appendNotes')?.trim();
   if (appendNotes) {
     updates.notes = [updates.notes ?? task.notes ?? '', appendNotes].filter(Boolean).join('\n\n');
-    diff.push(['Notizen', '…', `+ ${truncate(appendNotes, 60)}`]);
+    diff.push(['notes', '…', `+ ${truncate(appendNotes, 60)}`]);
   }
 
   const estimate = optNumber(raw, 'estimateMinutes');
   if (estimate !== undefined) {
     updates.timeEstimate = estimateMs(estimate) ?? 0;
-    diff.push(['Schätzung', fmtMin(task.timeEstimate), fmtMin(updates.timeEstimate)]);
+    diff.push(['estimate', fmtMin(task.timeEstimate), fmtMin(updates.timeEstimate)]);
   }
 
   const newDue = optDay(raw, 'dueDay');
   const oldDue = taskDueDay(task);
   if (newDue !== undefined && newDue !== oldDue) {
     Object.assign(updates, dueUpdates(task, newDue));
-    diff.push(['Fällig', oldDue ?? '–', newDue ?? '–']);
+    diff.push(['due', oldDue ?? '–', newDue ?? '–']);
   }
 
   const isDone = optBool(raw, 'isDone');
   if (isDone !== undefined && isDone !== task.isDone) {
     updates.isDone = isDone;
     updates.doneOn = isDone ? Date.now() : null;
-    diff.push(['Status', task.isDone ? 'erledigt' : 'offen', isDone ? 'erledigt' : 'offen']);
+    diff.push(['status', task.isDone ? 'done' : 'open', isDone ? 'done' : 'open']);
   }
 
   const projectName = optString(raw, 'project');
   if (projectName) {
     const p = ws.findProject(projectName);
-    if (!p) throw new ToolInputError(`Projekt "${projectName}" nicht gefunden (Verschieben nur in bestehende Projekte).`);
+    if (!p) throw new ToolInputError(`Project "${projectName}" not found (tasks can only be moved into existing projects).`);
     if (p.id !== task.projectId) {
-      if (task.parentId) throw new ToolInputError('Subtasks können nicht einzeln verschoben werden.');
+      if (task.parentId) throw new ToolInputError('Subtasks cannot be moved on their own. Move the parent task instead.');
       updates.projectId = p.id;
-      diff.push(['Projekt', ws.projectTitle(task.projectId) ?? '–', p.title]);
+      diff.push(['project', ws.projectTitle(task.projectId) ?? '–', p.title]);
     }
   }
 
@@ -553,15 +556,11 @@ const buildUpdateItem = (ctx: ToolContext, raw: Args): UpdateItem => {
       updates.tagIds = after;
       const label = (ids: string[]): string[] =>
         ids.filter((id) => id !== TODAY_TAG_ID).map((id) => ws.tagTitle(id) ?? id);
-      diff.push([
-        'Tags',
-        label(before).join(', ') || '–',
-        [...label(after), ...newTags.map((n) => `${n} (neu)`)].join(', ') || '–',
-      ]);
+      diff.push(['tags', label(before).join(', ') || '–', label(after).join(', ') || (newTags.length ? '' : '–')]);
     }
   }
 
-  if (!diff.length) throw new ToolInputError(`Keine Änderung für "${task.title}".`);
+  if (!diff.length) throw new ToolInputError(`No change for "${task.title}".`);
   return {
     kind: 'update',
     taskId: task.id,

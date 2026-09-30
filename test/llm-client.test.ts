@@ -55,17 +55,17 @@ describe('llm client', () => {
 
   it('reports HTTP errors with the server message and a hint', async () => {
     const llm = client(fakeFetch(401, { error: { message: 'invalid key' } }));
-    await assert.rejects(llm.listModels(), /HTTP 401.*invalid key.*API-Key/);
+    await assert.rejects(llm.listModels(), /HTTP 401.*invalid key.*API key/);
   });
 
   it('explains network errors (e.g. CORS)', async () => {
     const llm = client(() => Promise.reject(new TypeError('Failed to fetch')));
-    await assert.rejects(llm.listModels(), /Netzwerkfehler.*CORS/);
+    await assert.rejects(llm.listModels(), /Network error.*CORS/);
   });
 
   it('requires a chat model', async () => {
     const llm = client(fakeFetch(200, {}), 'k', { chatModel: '' });
-    await assert.rejects(llm.chat({ messages: [] }), /Chat-Modell/);
+    await assert.rejects(llm.chat({ messages: [] }), /chat model/);
   });
 
   it('returns embeddings in input order', async () => {

@@ -36,27 +36,27 @@ describe('applyProposal', () => {
     const results = await applyProposal(api, {
       items: [
         create({
-          title: 'Urlaub',
-          newProject: 'Reisen',
-          newTags: ['sommer'],
+          title: 'Vacation',
+          newProject: 'Travel',
+          newTags: ['summer'],
           timeEstimate: 60000,
           dueDay: '2026-10-01',
           notes: 'n',
-          subtasks: [create({ title: 'Hotel', newTags: ['sommer'] })],
+          subtasks: [create({ title: 'Hotel', newTags: ['summer'] })],
         }),
-        create({ title: 'Koffer', newProject: 'reisen' }),
+        create({ title: 'Suitcase', newProject: 'travel' }),
       ],
     });
     assert.ok(results.every((r) => r.ok));
     assert.deepEqual(
       api.calls.map((c) => [c.method, c.args[0]]),
       [
-        ['addProject', { title: 'Reisen' }],
-        ['addTag', { title: 'sommer' }],
+        ['addProject', { title: 'Travel' }],
+        ['addTag', { title: 'summer' }],
         [
           'addTask',
           {
-            title: 'Urlaub',
+            title: 'Vacation',
             tagIds: ['new-tag-2'],
             projectId: 'new-project-1',
             notes: 'n',
@@ -65,7 +65,7 @@ describe('applyProposal', () => {
           },
         ],
         ['addTask', { title: 'Hotel', tagIds: ['new-tag-2'], projectId: 'new-project-1', parentId: 'new-task-3' }],
-        ['addTask', { title: 'Koffer', tagIds: [], projectId: 'new-project-1' }],
+        ['addTask', { title: 'Suitcase', tagIds: [], projectId: 'new-project-1' }],
       ],
     );
   });
@@ -75,7 +75,7 @@ describe('applyProposal', () => {
     api.updateTask = () => Promise.reject(new Error('boom'));
     const results = await applyProposal(
       api,
-      { items: [update('a1', { isDone: true }), create({ title: 'skip me' }), update('a2', {}, ['neu'])] },
+      { items: [update('a1', { isDone: true }), create({ title: 'skip me' }), update('a2', {}, ['new'])] },
       [0, 2],
     );
     assert.deepEqual(

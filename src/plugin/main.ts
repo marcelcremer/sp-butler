@@ -1,6 +1,7 @@
 // Entry point of plugin.js. Super Productivity evaluates this file inside
 // `new Function('plugin', 'PluginAPI', code)`, so `PluginAPI` is in scope.
 
+import { LocalizedError, type Translate } from '../shared/i18n.ts';
 import type { SettingsResponse, UiRequest } from '../shared/protocol.ts';
 import type { PluginApi } from '../types/plugin-api.ts';
 import { createButler } from './butler.ts';
@@ -19,6 +20,8 @@ const settingsResponse = async (store: SettingsStore): Promise<SettingsResponse>
 });
 
 export const init = (api: PluginApi): void => {
+  // Keys are type-checked against en.json; the host resolves the user's language.
+  const t: Translate = (key, params) => api.translate(key, params);
   const store = createSettingsStore(api);
   const llm = createLlmClient({ getSettings: store.load, getApiKey: store.getApiKey });
   const log = (msg: string): void => {
@@ -41,8 +44,8 @@ export const init = (api: PluginApi): void => {
         const failed = results.filter((r) => !r.ok).length;
         api.showSnack({
           msg: failed
-            ? `SP Butler: ${String(results.length - failed)} ausgeführt, ${String(failed)} fehlgeschlagen`
-            : `SP Butler: ${String(results.length)} Änderung(en) ausgeführt`,
+            ? t('SNACK.PARTIALLY_APPLIED', { applied: results.length - failed, failed })
+            : t('SNACK.APPLIED', { count: results.length }),
           type: failed ? 'WARNING' : 'SUCCESS',
         });
         return results;
@@ -67,10 +70,11 @@ export const init = (api: PluginApi): void => {
   // Errors are returned as values: the host's message bridge only forwards
   // the message text of thrown errors, and this keeps the contract explicit.
   api.onMessage?.(async (message) => {
-    if (!isRequest(message)) return { ok: false, error: 'Unbekannte Nachricht.' };
+    if (!isRequest(message)) return { ok: false, error: t('ERRORS.UNKNOWN_MESSAGE') };
     try {
       return { ok: true, data: await handle(message) };
     } catch (e) {
+      if (e instanceof LocalizedError) return { ok: false, error: t(e.key, e.params) };
       return { ok: false, error: e instanceof Error ? e.message : String(e) };
     }
   });
@@ -82,7 +86,7 @@ export const init = (api: PluginApi): void => {
 
   api.registerShortcut({
     id: 'open-sp-butler',
-    label: 'SP Butler öffnen',
+    label: t('SHORTCUT_OPEN'),
     onExec: () => {
       api.showIndexHtmlAsView();
     },

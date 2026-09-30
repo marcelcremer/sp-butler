@@ -13,7 +13,10 @@ import { createZip } from './zip.ts';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const out = join(root, 'dist', 'sp-butler');
-const manifest = JSON.parse(readFileSync(join(root, 'src', 'manifest.json'), 'utf8')) as { version: string };
+const manifest = JSON.parse(readFileSync(join(root, 'src', 'manifest.json'), 'utf8')) as {
+  version: string;
+  i18n: { languages: string[] };
+};
 const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as { version: string };
 if (manifest.version !== pkg.version) {
   throw new Error(`Version mismatch: manifest ${manifest.version} vs package.json ${pkg.version}`);
@@ -53,8 +56,15 @@ writeFileSync(join(out, 'index.html'), html);
 cpSync(join(root, 'src', 'manifest.json'), join(out, 'manifest.json'));
 cpSync(join(root, 'src', 'icon.svg'), join(out, 'icon.svg'));
 
+// Translations for PluginAPI.translate(), one file per manifest language.
+const { i18n } = manifest;
+mkdirSync(join(out, 'i18n'));
+for (const lang of i18n.languages) {
+  cpSync(join(root, 'src', 'i18n', `${lang}.json`), join(out, 'i18n', `${lang}.json`));
+}
+
 // The plugin files must sit at the ZIP root (flat), not in a subfolder.
-const files = ['manifest.json', 'plugin.js', 'index.html', 'icon.svg'];
+const files = ['manifest.json', 'plugin.js', 'index.html', 'icon.svg', ...i18n.languages.map((l) => `i18n/${l}.json`)];
 const zipPath = join(root, 'dist', `sp-butler-${manifest.version}.zip`);
 writeFileSync(zipPath, createZip(files.map((name) => ({ name, data: readFileSync(join(out, name)) }))));
 console.log(`Built ${zipPath}`);

@@ -2,7 +2,7 @@
 // The iframe cannot access secret storage and should not hold the API key, so
 // all LLM traffic and task changes run in plugin.js.
 
-import type { ApplyResult, DiffRow } from '../plugin/proposal.ts';
+import type { ApplyResult, DiffRow, TagLabel } from '../plugin/proposal.ts';
 import type { Settings } from '../plugin/settings.ts';
 
 export interface ProposalItemView {
@@ -10,13 +10,16 @@ export interface ProposalItemView {
   kind: 'create' | 'update';
   title: string;
   project?: string;
+  projectIsNew?: boolean;
   parent?: string;
-  tags?: string[];
+  tags?: TagLabel[];
   estimateMin?: number;
   dueDay?: string;
   notes?: string;
   subtasks?: { title: string; estimateMin?: number; dueDay?: string }[];
   diff?: DiffRow[];
+  /** Tags an update would create (shown in the tags diff row). */
+  newTags?: string[];
 }
 
 export interface ProposalView {

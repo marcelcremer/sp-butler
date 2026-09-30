@@ -17,8 +17,8 @@ describe('filters', () => {
   });
 
   it('filters by fuzzy project name and tag', () => {
-    assert.deepEqual(ids(applyFilters(ws.tasks, ws, { project: 'auto' })), ['a4']);
-    assert.deepEqual(ids(applyFilters(ws.tasks, ws, { tag: '#Einkaufen' })), ['a1', 'a2', 'a3']);
+    assert.deepEqual(ids(applyFilters(ws.tasks, ws, { project: 'car' })), ['a4']);
+    assert.deepEqual(ids(applyFilters(ws.tasks, ws, { tag: '#Shopping' })), ['a1', 'a2', 'a3']);
   });
 
   it('filters by due range, including dueWithTime', () => {
@@ -32,25 +32,26 @@ describe('filters', () => {
   });
 
   it('reports unknown projects', () => {
-    assert.deepEqual(applyFilters(ws.tasks, ws, { project: 'Garten' }), { error: 'Projekt "Garten" nicht gefunden.' });
+    assert.deepEqual(applyFilters(ws.tasks, ws, { project: 'Garden' }), { error: 'Project "Garden" not found.' });
   });
 });
 
 describe('keyword ranking', () => {
-  it('tokenizes without stopwords and accents', () => {
+  it('drops English and German filler words and accents', () => {
+    assert.deepEqual(tokenize('All tasks for the TÜV!'), ['tuv']);
     assert.deepEqual(tokenize('Alle Aufgaben für den TÜV!'), ['tuv']);
   });
 
   it('matches word prefixes in both directions', () => {
-    assert.equal(keywordScore(tokenize('Einkauf'), 'Brot kaufen einkaufen'), 1);
-    assert.equal(keywordScore(tokenize('Reifenwechsel'), 'Reifen'), 1);
-    assert.equal(keywordScore(tokenize('Garten'), 'Brot kaufen'), 0);
+    assert.equal(keywordScore(tokenize('shop'), 'Buy bread shopping'), 1);
+    assert.equal(keywordScore(tokenize('receipts'), 'Collect receipt'), 1);
+    assert.equal(keywordScore(tokenize('Garden'), 'Buy bread'), 0);
   });
 
   it('ranks keyword hits first without semantic models', async () => {
     const { ranked, methods } = await rankTasks({
       tasks: ws.tasks,
-      query: 'einkaufen',
+      query: 'shopping',
       ws,
       llm: scriptedLlm([]),
       settings: { embeddingModel: '', rerankModel: '' },
@@ -72,7 +73,7 @@ describe('semantic ranking', () => {
 
   it('uses embeddings and caches task vectors', async () => {
     let embedCalls = 0;
-    const vec = (text: string): number[] => (/Waschmittel|Putzen/.test(text) ? [1, 0] : [0, 1]);
+    const vec = (text: string): number[] => (/detergent|Cleaning/.test(text) ? [1, 0] : [0, 1]);
     const index = createEmbeddingIndex({
       embed: (inputs) => {
         embedCalls++;
@@ -82,7 +83,7 @@ describe('semantic ranking', () => {
     const run = () =>
       rankTasks({
         tasks: ws.tasks,
-        query: 'Putzen',
+        query: 'Cleaning',
         ws,
         llm: scriptedLlm([]),
         settings: { embeddingModel: 'emb', rerankModel: '' },
@@ -117,7 +118,7 @@ describe('semantic ranking', () => {
     const logs: string[] = [];
     const { methods } = await rankTasks({
       tasks: ws.tasks,
-      query: 'Milch',
+      query: 'milk',
       ws,
       llm: scriptedLlm([]),
       settings: { embeddingModel: 'emb', rerankModel: 'rr' },

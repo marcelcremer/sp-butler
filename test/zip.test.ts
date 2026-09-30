@@ -31,7 +31,7 @@ describe('createZip', () => {
   it('round-trips entries including UTF-8 names', () => {
     const entries = [
       { name: 'manifest.json', data: Buffer.from('{"id":"x"}') },
-      { name: 'übung.txt', data: Buffer.from('ä'.repeat(1000)) },
+      { name: 'résumé-ü.txt', data: Buffer.from('ä'.repeat(1000)) },
       { name: 'empty', data: Buffer.alloc(0) },
     ];
     const files = readZip(createZip(entries));

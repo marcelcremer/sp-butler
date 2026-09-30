@@ -2,6 +2,7 @@
 // follow the user across devices; the API key lives in the local-only secret
 // store (never synced, exported or backed up).
 
+import { LocalizedError, type MessageKey } from '../shared/i18n.ts';
 import type { PluginApi } from '../types/plugin-api.ts';
 
 export interface Settings {
@@ -14,7 +15,7 @@ export interface Settings {
   temperature: number;
   maxToolRounds: number;
   requestTimeoutMs: number;
-  /** Appended to the system prompt, e.g. "Einkäufe immer ins Projekt Haushalt". */
+  /** Appended to the system prompt, e.g. "Put groceries into the Household project". */
   customInstructions: string;
 }
 
@@ -55,16 +56,16 @@ export const normalizeSettings = (raw: unknown): Settings => {
   };
 };
 
-/** Returns an error message or null. */
-export const validateBaseUrl = (url: string): string | null => {
+/** Returns the translation key of the problem, or null. */
+export const validateBaseUrl = (url: string): MessageKey | null => {
   let parsed: URL;
   try {
     parsed = new URL(url);
   } catch {
-    return 'Base-URL ist keine gültige URL.';
+    return 'ERRORS.INVALID_BASE_URL';
   }
   if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
-    return 'Base-URL muss mit http:// oder https:// beginnen.';
+    return 'ERRORS.BASE_URL_PROTOCOL';
   }
   return null;
 };
@@ -104,7 +105,7 @@ export const createSettingsStore = (api: SettingsApi): SettingsStore => {
     async save(partial) {
       const next = normalizeSettings({ ...(await load()), ...partial });
       const urlError = validateBaseUrl(next.baseUrl);
-      if (urlError) throw new Error(urlError);
+      if (urlError) throw new LocalizedError(urlError);
       await api.persistDataSynced(JSON.stringify(next), SETTINGS_KEY);
       cache = next;
       return next;

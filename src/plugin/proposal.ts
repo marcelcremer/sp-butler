@@ -23,15 +23,29 @@ export interface CreateSpec {
   display: {
     title: string;
     project?: string;
+    projectIsNew?: boolean;
     parent?: string;
-    tags: string[];
+    tags: TagLabel[];
     estimateMin?: number;
     dueDay?: string;
     notes?: string;
   };
 }
 
-export type DiffRow = [field: string, from: string, to: string];
+export interface TagLabel {
+  name: string;
+  isNew: boolean;
+}
+
+/** Language-neutral field ids; the UI translates them. */
+export type DiffField = 'title' | 'notes' | 'estimate' | 'due' | 'status' | 'project' | 'tags';
+
+/**
+ * One changed field. Values are data, not prose: estimates in minutes,
+ * status as "open"/"done", "–" for empty. New tags of a tags row are listed
+ * in UpdateItem.newTags rather than in `to`.
+ */
+export type DiffRow = [field: DiffField, from: string, to: string];
 
 export interface CreateItem extends CreateSpec {
   kind: 'create';

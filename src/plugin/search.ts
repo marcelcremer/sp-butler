@@ -14,6 +14,7 @@ import type { LlmClient } from './llm-client.ts';
 import type { Settings } from './settings.ts';
 import { normalizeName, type Workspace } from './workspace.ts';
 
+// German and English filler words; users may write in either language.
 const STOPWORDS = new Set(
   (
     'der die das den dem des ein eine einen einem einer und oder mit von für fur im in am an auf zu zum zur ' +
@@ -80,13 +81,13 @@ export const applyFilters = (
   let projectId: string | null = null;
   if (f.project) {
     const p = ws.findProject(f.project);
-    if (!p) return { error: `Projekt "${f.project}" nicht gefunden.` };
+    if (!p) return { error: `Project "${f.project}" not found.` };
     projectId = p.id;
   }
   let tagId: string | null = null;
   if (f.tag) {
     const t = ws.findTag(f.tag);
-    if (!t) return { error: `Tag "${f.tag}" nicht gefunden.` };
+    if (!t) return { error: `Tag "${f.tag}" not found.` };
     tagId = t.id;
   }
 

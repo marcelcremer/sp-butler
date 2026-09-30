@@ -3,7 +3,6 @@
 
 import type { Task } from '../types/plugin-api.ts';
 
-const WEEKDAYS_DE = ['Sonntag', 'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag'];
 const WEEKDAYS_EN = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
 const pad = (n: number): string => String(n).padStart(2, '0');
@@ -42,33 +41,33 @@ export const taskDueDay = (task: Pick<Task, 'dueDay' | 'dueWithTime'>): string |
 };
 
 const RELATIVE_LABELS: Record<number, string> = {
-  [-1]: ' (gestern / yesterday)',
-  0: ' (heute / today)',
-  1: ' (morgen / tomorrow)',
-  2: ' (übermorgen)',
+  [-1]: ' (yesterday)',
+  0: ' (today)',
+  1: ' (tomorrow)',
+  2: ' (day after tomorrow)',
 };
 
 /**
  * A compact calendar the model can look up instead of doing weekday arithmetic
- * itself, which LLMs are notoriously bad at ("nächsten Freitag" etc.).
+ * itself, which LLMs are notoriously bad at ("next Friday" etc.).
  */
 export const buildCalendarContext = (now = new Date(), daysAhead = 14): string => {
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const weekday = (d: Date): string => WEEKDAYS_DE[d.getDay()] ?? '';
+  const weekday = (d: Date): string => WEEKDAYS_EN[d.getDay()] ?? '';
   const lines: string[] = [];
   for (let i = -1; i <= daysAhead; i++) {
     const day = addDays(today, i);
     lines.push(
-      `${toDayStr(day)} ${weekday(day)} / ${WEEKDAYS_EN[day.getDay()] ?? ''}${RELATIVE_LABELS[i] ?? ''}`,
+      `${toDayStr(day)} ${weekday(day)}${RELATIVE_LABELS[i] ?? ''}`,
     );
   }
   const weekStart = startOfWeek(today);
   const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
   return [
-    `Heute / today: ${toDayStr(today)} (${weekday(today)}), Zeitzone: ${tz}`,
-    `Diese Woche / this week: ${toDayStr(weekStart)} bis ${toDayStr(addDays(weekStart, 6))}`,
-    `Nächste Woche / next week: ${toDayStr(addDays(weekStart, 7))} bis ${toDayStr(addDays(weekStart, 13))}`,
-    'Kalender:',
+    `Today: ${toDayStr(today)} (${weekday(today)}), time zone: ${tz}`,
+    `This week: ${toDayStr(weekStart)} to ${toDayStr(addDays(weekStart, 6))}`,
+    `Next week: ${toDayStr(addDays(weekStart, 7))} to ${toDayStr(addDays(weekStart, 13))}`,
+    'Calendar:',
     ...lines,
   ].join('\n');
 };

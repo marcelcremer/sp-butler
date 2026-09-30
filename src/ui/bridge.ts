@@ -2,6 +2,7 @@
 // `PLUGIN_MESSAGE` posts to the handler registered with PluginAPI.onMessage.
 
 import type { UiRequest, UiResponse } from '../shared/protocol.ts';
+import { t } from './i18n.ts';
 
 const MESSAGE = 'PLUGIN_MESSAGE';
 const MESSAGE_RESPONSE = 'PLUGIN_MESSAGE_RESPONSE';
@@ -36,13 +37,13 @@ export const send = async <T extends UiRequest>(req: T): Promise<UiResponse<T['t
   const result = await new Promise<unknown>((resolve, reject) => {
     const timer = setTimeout(() => {
       pending.delete(messageId);
-      reject(new Error('Keine Antwort vom Plugin (Zeitüberschreitung).'));
+      reject(new Error(t('ERRORS.BRIDGE_TIMEOUT')));
     }, TIMEOUT_MS);
     pending.set(messageId, { resolve, reject, timer });
     window.parent.postMessage({ type: MESSAGE, messageId, message: req }, '*');
   });
   if (!result || typeof result !== 'object' || !('ok' in result)) {
-    return { ok: false, error: 'Ungültige Antwort vom Plugin.' };
+    return { ok: false, error: t('ERRORS.BRIDGE_INVALID') };
   }
   return result as UiResponse<T['type']>;
 };

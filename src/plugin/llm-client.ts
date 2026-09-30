@@ -7,6 +7,7 @@
 // On web/desktop the endpoint therefore has to send CORS headers
 // (Access-Control-Allow-Origin, -Allow-Headers: Authorization, Content-Type).
 
+import { LocalizedError, type MessageKey, type TranslationParams } from '../shared/i18n.ts';
 import type { Settings } from './settings.ts';
 
 export interface ToolCall {
@@ -39,11 +40,11 @@ export interface LlmClient {
   listModels(): Promise<string[]>;
 }
 
-export class LlmError extends Error {
+export class LlmError extends LocalizedError {
   readonly status: number | undefined;
 
-  constructor(message: string, status?: number) {
-    super(message);
+  constructor(key: MessageKey, params: TranslationParams = {}, status?: number) {
+    super(key, params);
     this.name = 'LlmError';
     this.status = status;
   }
@@ -70,8 +71,8 @@ const errorDetail = (json: unknown, text: string): string => {
   return text.slice(0, 300);
 };
 
-const requireModel = (model: string, label: string): string => {
-  if (!model) throw new LlmError(`Kein ${label} konfiguriert (Einstellungen).`);
+const requireModel = (model: string, missingKey: MessageKey): string => {
+  if (!model) throw new LlmError(missingKey);
   return model;
 };
 
@@ -102,12 +103,9 @@ export const createLlmClient = ({
       });
     } catch (e) {
       if (e instanceof Error && e.name === 'AbortError') {
-        throw new LlmError(`Zeitüberschreitung nach ${settings.requestTimeoutMs} ms (${url})`);
+        throw new LlmError('ERRORS.TIMEOUT', { ms: settings.requestTimeoutMs, url });
       }
-      const msg = e instanceof Error ? e.message : String(e);
-      throw new LlmError(
-        `Netzwerkfehler bei ${url}: ${msg}. Prüfe Base-URL, Netzwerk und ob der Endpoint CORS erlaubt.`,
-      );
+      throw new LlmError('ERRORS.NETWORK', { url, message: e instanceof Error ? e.message : String(e) });
     } finally {
       clearTimeout(timer);
     }
@@ -120,10 +118,10 @@ export const createLlmClient = ({
       // handled below
     }
     if (!res.ok) {
-      const hint = res.status === 401 || res.status === 403 ? ' – API-Key prüfen.' : '';
-      throw new LlmError(`HTTP ${res.status} von ${path}: ${errorDetail(json, text)}${hint}`, res.status);
+      const key = res.status === 401 || res.status === 403 ? 'ERRORS.HTTP_AUTH' : 'ERRORS.HTTP';
+      throw new LlmError(key, { status: res.status, path, detail: errorDetail(json, text) }, res.status);
     }
-    if (json === null) throw new LlmError(`Ungültige JSON-Antwort von ${path}: ${text.slice(0, 200)}`);
+    if (json === null) throw new LlmError('ERRORS.INVALID_JSON', { path, snippet: text.slice(0, 200) });
     return json;
   };
 
@@ -131,7 +129,7 @@ export const createLlmClient = ({
     async chat({ messages, tools }) {
       const settings = await getSettings();
       const body: Record<string, unknown> = {
-        model: requireModel(settings.chatModel, 'Chat-Modell'),
+        model: requireModel(settings.chatModel, 'ERRORS.NO_CHAT_MODEL'),
         messages,
         temperature: settings.temperature,
       };
@@ -143,7 +141,7 @@ export const createLlmClient = ({
       const choices = isObject(json) && Array.isArray(json.choices) ? (json.choices as unknown[]) : [];
       const first = choices[0];
       const message = isObject(first) ? first.message : undefined;
-      if (!isObject(message)) throw new LlmError('Antwort enthält keine choices[0].message.');
+      if (!isObject(message)) throw new LlmError('ERRORS.NO_CHOICE');
       const toolCalls = Array.isArray(message.tool_calls) ? (message.tool_calls as ToolCall[]) : [];
       return {
         role: 'assistant',
@@ -155,7 +153,7 @@ export const createLlmClient = ({
     async embed(inputs) {
       const settings = await getSettings();
       const json = await call('/embeddings', {
-        model: requireModel(settings.embeddingModel, 'Embedding-Modell'),
+        model: requireModel(settings.embeddingModel, 'ERRORS.NO_EMBEDDING_MODEL'),
         input: inputs,
       });
       const data =
@@ -163,7 +161,7 @@ export const createLlmClient = ({
           ? (json.data as { index?: number; embedding: number[] }[])
           : [];
       if (data.length !== inputs.length) {
-        throw new LlmError(`Embeddings: ${inputs.length} erwartet, ${data.length} erhalten.`);
+        throw new LlmError('ERRORS.EMBEDDING_COUNT', { expected: inputs.length, actual: data.length });
       }
       return [...data].sort((a, b) => (a.index ?? 0) - (b.index ?? 0)).map((d) => d.embedding);
     },
@@ -171,7 +169,7 @@ export const createLlmClient = ({
     async rerank(query, documents, topN) {
       const settings = await getSettings();
       const json = await call('/rerank', {
-        model: requireModel(settings.rerankModel, 'Rerank-Modell'),
+        model: requireModel(settings.rerankModel, 'ERRORS.NO_RERANK_MODEL'),
         query,
         documents,
         top_n: topN ?? documents.length,

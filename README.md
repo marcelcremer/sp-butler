@@ -1,19 +1,21 @@
 # SP Butler
 
-Plugin für [Super Productivity](https://super-productivity.com), mit dem sich Aufgaben in natürlicher Sprache verwalten lassen. Es spricht mit jedem **OpenAI-kompatiblen Endpoint** (`/chat/completions` mit Tool-Calling, optional `/embeddings` und `/rerank`).
+A [Super Productivity](https://super-productivity.com) plugin for managing tasks in natural language. It talks to any **OpenAI-compatible endpoint** (`/chat/completions` with tool calling, optionally `/embeddings` and `/rerank`).
 
-## Stufe 1 – Funktionen
+## Stage 1 – features
 
-| Anwendungsfall | Beispiel | Tools |
+| Use case | Example | Tools |
 | --- | --- | --- |
-| Tasks in natürlicher Sprache anlegen | „Morgen Reifenwechsel, 30 Minuten, Projekt Auto“ | `propose_create_tasks` |
-| Brain-Dump zerlegen | Absatz einfügen → mehrere Tasks mit Subtasks | `propose_create_tasks` |
-| Fragen an die Liste | „Was ist diese Woche fällig?“, „Was liegt im Projekt X noch offen?“ | `search_tasks`, `get_task` |
-| Bulk-Änderungen | „Schieb alles von heute auf Freitag“, „Markiere die drei Einkaufstasks als erledigt“ | `search_tasks` → `propose_update_tasks` |
+| Create tasks in natural language | "Tire change tomorrow, 30 minutes, project Car" | `propose_create_tasks` |
+| Split a brain dump | Paste a paragraph → several tasks with subtasks | `propose_create_tasks` |
+| Ask about the list | "What is due this week?", "What is still open in project X?" | `search_tasks`, `get_task` |
+| Bulk changes | "Move everything from today to Friday", "Mark the three shopping tasks as done" | `search_tasks` → `propose_update_tasks` |
 
-Unterstützte Felder: Titel, Projekt, Tags, Notizen, Zeitschätzung, Fälligkeitstag, Parent (Subtasks), dazu Erledigt-Status und Projektwechsel.
+Supported fields: title, project, tags, notes, time estimate, due day, parent (subtasks), plus done status and moving between projects.
 
-**Nichts wird ohne Bestätigung geändert.** Schreibende Tools erzeugen nur einen *Vorschlag*. Die UI zeigt ihn als Liste mit Checkboxen (Diff bei Änderungen). Erst „Übernehmen“ führt die ausgewählten Einträge aus.
+**Nothing changes without confirmation.** Write tools only create a *proposal*. The UI shows it as a checklist (with a diff for changes), and only "Apply" executes the selected items.
+
+The butler replies in the language the user writes in. The UI is available in English and German.
 
 ## Installation
 
@@ -22,80 +24,94 @@ npm ci
 npm run build        # → dist/sp-butler-<version>.zip
 ```
 
-In Super Productivity: **Einstellungen → Plugins → Plugin-Datei wählen** und die ZIP hochladen. Danach das Panel „SP Butler“ in der rechten Seitenleiste öffnen, dort unter *Einstellungen* konfigurieren:
+In Super Productivity: **Settings → Plugins → Choose plugin file** and upload the ZIP. Then open the "SP Butler" panel in the right sidebar and configure it under *Settings*:
 
-| Einstellung | Standard | Hinweis |
+| Setting | Default | Note |
 | --- | --- | --- |
-| Base-URL | `https://ai-2.1nt.eu/v1` | beliebiger OpenAI-kompatibler Endpoint |
-| API-Key | – | lokal im Secret-Storage, **wird nicht synchronisiert** oder exportiert |
-| Chat-Modell | – | Pflicht, muss Tool-Calling können |
-| Embedding-Modell | – | optional, aktiviert semantische Suche |
-| Rerank-Modell | – | optional, verbessert die Trefferreihenfolge |
-| Temperatur / Max. Tool-Runden / Timeout | 0.2 / 8 / 90 s | |
-| Eigene Anweisungen | – | z. B. „Einkäufe immer ins Projekt Haushalt“ |
+| Base URL | `https://ai-2.1nt.eu/v1` | any OpenAI-compatible endpoint |
+| API key | – | stored locally in the secret store, **never synced** or exported |
+| Chat model | – | required, must support tool calling |
+| Embedding model | – | optional, enables semantic search |
+| Rerank model | – | optional, improves the order of search results |
+| Temperature / tool rounds / timeout | 0.2 / 8 / 90 s | |
+| Custom instructions | – | e.g. "Always put groceries into the Household project" |
 
-„Verbindung testen & Modelle laden“ ruft `/models` auf und füllt die Modell-Vorschläge.
+"Test connection" calls `/models` and fills the model suggestions.
 
-Zusätzlich gibt es den Shortcut **„SP Butler öffnen“**. Die Taste dafür legt man unter Einstellungen → Tastenkürzel → Plugin Shortcuts fest.
+There is also a shortcut **"Open SP Butler"**; assign a key under Settings → Keyboard shortcuts → Plugin shortcuts.
 
 ### CORS
 
-Die Anfragen gehen per `fetch` direkt aus der App (Web/Desktop). Der Endpoint muss daher CORS erlauben (`Access-Control-Allow-Origin`, `Access-Control-Allow-Headers: Authorization, Content-Type`). LiteLLM, vLLM und Ollama können das bzw. tun es standardmäßig. Schlägt die Verbindung mit „Netzwerkfehler“ fehl, ist fehlendes CORS die wahrscheinlichste Ursache.
+Requests are sent with `fetch` directly from the app (web/desktop), so the endpoint must allow CORS (`Access-Control-Allow-Origin`, `Access-Control-Allow-Headers: Authorization, Content-Type`). LiteLLM, vLLM and Ollama support this, some by default. If the connection fails with "Network error", missing CORS headers are the most likely cause.
 
-Warum nicht `PluginAPI.request`? Der Host erlaubt dort nur Hosts, die fest im `allowedHosts` des Manifests stehen. Eine frei konfigurierbare Base-URL wäre damit nicht möglich, und im Browser gilt CORS dort genauso.
+Why not `PluginAPI.request`? The host only allows hosts listed in the manifest's `allowedHosts`, which rules out a freely configurable base URL, and CORS applies there in the browser as well.
 
-## Architektur
+## Architecture
 
 ```
-┌──────────── index.html (iframe, Seitenpanel) ────────────┐
-│ Chat · Vorschlagskarten · Einstellungen                   │
+┌──────────── index.html (iframe, side panel) ─────────────┐
+│ chat · proposal cards · settings                          │
 └──────────────┬────────────────────────────────────────────┘
                │ postMessage (PLUGIN_MESSAGE → PluginAPI.onMessage)
-┌──────────────▼──────────── plugin.js (Host) ──────────────┐
-│ main.ts      Nachrichten-Router, Shortcut, Sync-Hook       │
-│ butler.ts    Tool-Calling-Schleife, Sessions, Verlauf      │
-│ prompt.ts    System-Prompt inkl. Kalender, Projekte, Tags  │
-│ tools.ts     search_tasks · get_task · propose_* (nur Vorschlag) │
-│ proposal.ts  Vorschlag sammeln → nach Bestätigung anwenden │
-│ search.ts    Filter + Keyword → Embeddings → Rerank        │
+┌──────────────▼──────────── plugin.js (host) ──────────────┐
+│ main.ts        message router, shortcut, sync hook         │
+│ butler.ts      tool-calling loop, sessions, history        │
+│ prompt.ts      system prompt with calendar, projects, tags │
+│ tools.ts       search_tasks · get_task · propose_* (proposals only) │
+│ proposal.ts    collect proposals → apply after confirmation │
+│ search.ts      filters + keyword → embeddings → rerank     │
 │ llm-client.ts  /chat/completions · /embeddings · /rerank · /models │
-│ settings.ts  Einstellungen (synced) + API-Key (Secret)     │
+│ settings.ts    settings (synced) + API key (secret)        │
 └────────────────────────────────────────────────────────────┘
 ```
 
-Designentscheidungen:
+Design decisions:
 
-- **LLM-Aufrufe in `plugin.js`, nicht im iframe.** Nur der Host-Teil hat Zugriff auf `getSecret`. Der API-Key erreicht die UI daher nie.
-- **Kurze Task-Referenzen** (`t1`, `t2`, …) statt der langen IDs. Das spart Tokens, und Tippfehler des Modells fallen auf (unbekannte Ref → Fehler ans Modell, das sich korrigiert).
-- **Kalender im Prompt.** Die nächsten 14 Tage stehen mit Wochentag im Prompt („2026-10-02 Freitag“). LLMs rechnen Wochentage oft falsch.
-- **Semantische Suche baut stufenweise auf.** Ohne Modelle gibt es Stichwortsuche mit Präfix-Matching („Einkauf“ ≈ „einkaufen“). Mit Embedding-Modell kommt Cosinus-Ähnlichkeit hinzu (Vektoren pro Task gecacht), mit Rerank-Modell eine Neusortierung der Top 40. Fällt ein Endpoint aus, arbeitet die vorherige Stufe weiter.
-- **Verschieben mit Uhrzeit.** Tasks mit fester Uhrzeit (`dueWithTime`) behalten beim Verschieben ihre Uhrzeit.
-- **UI im Look von [shadcn/ui](https://ui.shadcn.com), ohne React.** Die Farb-Tokens (Dark Mode) stammen aus shadcns `globals.css`, die Komponenten (Button, Card, Badge, Checkbox, Input, Tabs, Message/Bubble, Empty) sind als schlankes CSS in `src/ui/styles.css` nachgebaut, die Icons sind Lucide-SVGs. Das UI-Kit von Super Productivity ist per `"uiKit": false` abgeschaltet, damit es die Styles nicht überschreibt.
-- **Robust gegen Modellfehler.** Tool-Argumente werden validiert. Fehler gehen als Tool-Ergebnis zurück ans Modell, bei Bulk-Änderungen einzeln pro Eintrag.
+- **LLM calls run in `plugin.js`, not in the iframe.** Only the host side can access `getSecret`, so the API key never reaches the UI.
+- **Short task references** (`t1`, `t2`, …) instead of the long ids. This saves tokens and makes model typos detectable (unknown ref → error back to the model, which corrects itself).
+- **Calendar in the prompt.** The next 14 days are listed with weekdays ("2026-10-02 Friday"), because LLMs often get weekday arithmetic wrong.
+- **Semantic search in stages.** Without extra models there is keyword search with prefix matching ("shop" ≈ "shopping"). An embedding model adds cosine similarity (vectors cached per task), a rerank model re-sorts the top 40. If an endpoint fails, the previous stage keeps working.
+- **Rescheduling keeps the time of day.** Tasks with a fixed time (`dueWithTime`) keep it when moved to another day.
+- **UI in the style of [shadcn/ui](https://ui.shadcn.com), without React.** The color tokens (dark mode) come from shadcn's `globals.css`; the components (button, card, badge, checkbox, input, tabs, message/bubble, empty state) are rebuilt as plain CSS in `src/ui/styles.css`; icons are Lucide SVGs. Super Productivity's UI kit is disabled via `"uiKit": false` so it cannot override the styles.
+- **Robust against model mistakes.** Tool arguments are validated. Errors go back to the model as tool results, for bulk changes per item.
 
-## Entwicklung
+### Translations
 
-Abhängigkeiten sind bewusst klein: nur `typescript`, `esbuild`, `eslint` und `typescript-eslint` (plus `@types/node`). Tests laufen mit dem eingebauten `node:test`. Node ≥ 22.18 führt TypeScript direkt aus, ein Test-Framework oder Loader ist nicht nötig. Die ZIP erzeugt ein kleiner eigener Writer auf Basis von `node:zlib`.
+`src/i18n/en.json` and `src/i18n/de.json` are the single source of all user-facing text. The build ships them as `i18n/` in the ZIP (declared in the manifest), where Super Productivity loads them:
+
+- `plugin.js` uses `PluginAPI.translate()` (snackbar messages, shortcut name, error messages). Modules throw a `LocalizedError` with a key and parameters; `main.ts` translates it.
+- The iframe only has an async `translate()` over the message bridge, so the UI bundles the same files, asks the host for the language via `getCurrentLanguage()` and falls back to English. Static markup uses `data-i18n*` attributes.
+- Translation keys are type-checked against `en.json`. Tests check that all languages have the same keys and placeholders and that every key used in `index.html` exists.
+
+Text for the model (tool descriptions, tool errors, system prompt) stays English on purpose.
+
+To add a language: add `src/i18n/<code>.json` with the same keys, list the code in `manifest.json` under `i18n.languages`, and register it in `src/ui/i18n.ts`.
+
+## Development
+
+Dependencies are deliberately few: `typescript`, `esbuild`, `eslint` and `typescript-eslint` (plus `@types/node`). Tests use the built-in `node:test`; Node ≥ 22.18 runs TypeScript directly, so no test framework or loader is needed. The ZIP is written by a small writer based on `node:zlib`.
 
 ```bash
 npm run typecheck   # tsc (strict)
 npm run lint        # eslint, typescript-eslint strictTypeChecked
 npm test            # node --test
 npm run build       # dist/sp-butler/ + ZIP
-npm run check       # alles zusammen (läuft auch in CI)
+npm run check       # all of the above (also runs in CI)
 ```
 
-Die Plugin-API-Typen liegen in `src/types/plugin-api.ts`. Das npm-Paket `@super-productivity/plugin-api` (1.0.1) ist älter als Secret-Storage, deshalb ist die benötigte Teilmenge aus dem Upstream-Repo übernommen.
+CI runs the checks on pull requests. On `main` it also uploads the plugin as a build artifact; the download is the installable plugin ZIP.
 
-Zum Ausprobieren ohne echte Daten eignet sich <https://test-app.super-productivity.com/>.
+The Plugin API types live in `src/types/plugin-api.ts`. The npm package `@super-productivity/plugin-api` (1.0.1) predates secret storage, so the needed subset is taken from the upstream repository.
 
-## Ideen für die nächsten Stufen
+For trying things out without real data, use <https://test-app.super-productivity.com/>.
 
-- **Löschen und Umstrukturieren**: `deleteTask` und Subtasks verschieben über `batchUpdateForProject`, mit extra deutlicher Bestätigung.
-- **Kontextmenü „Mit Butler bearbeiten“** (`registerTaskContextMenuEntry`): Task zerlegen, schätzen oder umformulieren.
-- **Tagesplanung**: „Plane meinen Tag mit 6 Stunden Kapazität“ auf Basis von Schätzungen, Fälligkeiten und `timeSpent`.
-- **Wiederkehrende Tasks** (`taskRepeatCfgs` aus `getAppState`) lesen und in Antworten berücksichtigen.
-- **Archiv durchsuchen** (`getArchivedTasks`): „Wann habe ich zuletzt die Reifen gewechselt?“
-- **Streaming** der Antworten und ein Abbrechen-Button.
-- **Chatverlauf behalten** (`persistDataSynced` pro Gerät) und i18n der UI (Englisch).
-- **Auto-Apply-Option** für einzelne, eindeutige Neuanlagen.
+## Ideas for the next stages
+
+- **Delete and restructure**: `deleteTask` and moving subtasks via `batchUpdateForProject`, with an extra clear confirmation.
+- **Context menu "Edit with Butler"** (`registerTaskContextMenuEntry`): split, estimate or rephrase a task.
+- **Day planning**: "Plan my day with 6 hours of capacity" based on estimates, due days and `timeSpent`.
+- **Recurring tasks** (`taskRepeatCfgs` from `getAppState`) taken into account in answers.
+- **Search the archive** (`getArchivedTasks`): "When did I last change the tires?"
+- **Streaming** replies and a cancel button.
+- **Keep the chat history** (`persistDataSynced` per device).
+- **Auto-apply option** for single, unambiguous new tasks.
